@@ -1,6 +1,6 @@
 # Clara 📝
 
-A powerful CLI productivity assistant for hierarchical task management.
+A powerful CLI productivity assistant for hierarchical task management with integrated time tracking.
 
 ## Features
 
@@ -17,6 +17,12 @@ A powerful CLI productivity assistant for hierarchical task management.
 - Create folders, lists, tasks, and subtasks
 - Mark any task/subtask as done
 - Intuitive CLI with help text
+
+⏱️ **Time Tracking**
+- Manual session tracking: Focus, Break, Meeting
+- Link sessions to specific tasks for detailed analytics
+- Active session management with crash recovery
+- Duration tracking and session history
 
 ## Quick Start
 
@@ -52,6 +58,13 @@ clara list --folder F1       # Filter by folder
 
 # Mark tasks complete
 clara done F1-L2-T1.2.1     # Complete nested subtask
+
+# Time tracking
+clara track start                           # Start focus session
+clara track start --kind break             # Start break session  
+clara track start --kind meeting --task F1-L2-T1  # Link session to task
+clara track current                         # Check active session
+clara track stop                           # Complete session
 ```
 
 ### Example Output
@@ -63,6 +76,19 @@ clara done F1-L2-T1.2.1     # Complete nested subtask
   🔲 [F1-L2-T1.1] Research competitors  (created 2025‑07‑26 13:20)
   🔲 [F1-L2-T1.2] Create outline  (created 2025‑07‑26 13:20)
     ✅ [F1-L2-T1.2.1] Draft introduction  (created 2025‑07‑26 13:20)
+```
+
+#### Time Tracking Example
+
+```bash
+$ clara track start --kind focus --task F1-L2-T1
+🎯 Started Focus session S20250726T134713Z (F1-L2-T1)
+
+$ clara track current
+🔄 Active Focus session S20250726T134713Z - 0h 25m elapsed (F1-L2-T1)
+
+$ clara track stop
+⏹️ Stopped Focus session S20250726T134713Z after 0h 25m (F1-L2-T1)
 ```
 
 ## Architecture
@@ -111,9 +137,23 @@ clara list --folder <id>            # Filter by folder
 clara list --folder <id> --list <id> --tree  # Filter and tree view
 ```
 
+### Time Tracking
+```bash
+clara track start                          # Start focus session (default)
+clara track start --kind <type>           # Start specific session (focus/break/meeting)
+clara track start --task <task-id>        # Link session to task
+clara track start --kind focus --task F1-L2-T1  # Combined options
+clara track current                       # Show active session status
+clara track stop                          # Complete active session
+```
+
 ## Data Storage
 
-Clara stores data in `~/.local/share/clara/workspace.json` as structured JSON with full hierarchy preserved.
+Clara stores data in `~/.local/share/clara/` as structured JSON:
+
+- **`workspace.json`** - Task hierarchy with full folder/list/task structure
+- **`sessions.json`** - Completed time tracking sessions
+- **`active_session.json`** - Current active session (crash recovery)
 
 ## Contributing
 

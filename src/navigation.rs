@@ -59,7 +59,6 @@ fn find_task_in_task<'a>(
 
 /// Read-only recursive lookup by id string.
 /// Returns Some(&Task) if found, else None.
-#[allow(dead_code)]
 pub fn find_task<'a>(
     ws: &'a Workspace,
     id: &str,
