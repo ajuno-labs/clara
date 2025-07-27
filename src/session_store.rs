@@ -76,3 +76,12 @@ pub fn add_session(session: Session) -> io::Result<()> {
     sessions.push(session);
     save(&sessions)
 }
+
+/// Mark the active session as warned
+pub fn mark_active_warned() -> io::Result<()> {
+    if let Some(mut session) = load_active()? {
+        session.warned = true;
+        save_active(&session)?;
+    }
+    Ok(())
+}

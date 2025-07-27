@@ -1,10 +1,16 @@
 # Clara 📝
 
-A powerful CLI productivity assistant for hierarchical task management with integrated time tracking.
+A powerful interactive productivity assistant for hierarchical task management with integrated time tracking.
 
 ## Features
 
-✨ **Hierarchical Organization**
+✨ **Interactive REPL Interface**
+- Real-time session timer display in prompt
+- No CLI arguments needed - launches directly into interactive mode
+- Intuitive commands with help system
+- Graceful WSL/Linux compatibility
+
+📊 **Hierarchical Organization**
 - 📁 **Folders** → 📋 **Lists** → ✅ **Tasks** with unlimited nesting
 - Human-readable dot-path IDs: `F1-L2-T1`, `F1-L2-T1.2.1`
 
@@ -13,16 +19,14 @@ A powerful CLI productivity assistant for hierarchical task management with inte
 - Flat list view for quick scanning
 - Filter by folder/list
 
-🎯 **Powerful Commands**
-- Create folders, lists, tasks, and subtasks
-- Mark any task/subtask as done
-- Intuitive CLI with help text
-
-⏱️ **Time Tracking**
-- Manual session tracking: Focus, Break, Meeting
+⏱️ **Pomodoro-Style Time Tracking**
+- Real-time timer display in REPL prompt
+- Session types: Focus (25min), Break (5min), Meeting (60min) 
 - Link sessions to specific tasks for detailed analytics
 - Active session management with crash recovery
-- Duration tracking and session history
+- Extension support with custom durations
+- In-terminal notifications and alerts
+- Configurable timing via `~/.config/clara/settings.toml`
 
 ## Quick Start
 
@@ -41,54 +45,59 @@ cargo install --path .
 ### Basic Usage
 
 ```bash
-# Create workspace structure
-clara folder add Work
-clara folder lists add --folder F1 "Today"
+# Launch Clara (interactive mode only)
+clara
 
-# Add tasks and subtasks
-clara add "Write proposal" --folder F1 --list F1-L2
-clara subtask "Research competitors" --parent F1-L2-T1
-clara subtask "Create outline" --parent F1-L2-T1
-clara subtask "Draft introduction" --parent F1-L2-T1.2
+# Interactive REPL commands:
+🎯 Clara Interactive Mode
+Type '/help' for commands, '/exit' to quit
 
-# View tasks
-clara list                    # All tasks
-clara list --tree            # Tree view with nesting
-clara list --folder F1       # Filter by folder
+clara [⏸️ No active session]> folder add Work
+📁 Folder created!
 
-# Mark tasks complete
-clara done F1-L2-T1.2.1     # Complete nested subtask
+clara [⏸️ No active session]> folder lists add --folder F1 "Today"
+📋 List created!
 
-# Time tracking
-clara track start                           # Start focus session
-clara track start --kind break             # Start break session  
-clara track start --kind meeting --task F1-L2-T1  # Link session to task
-clara track current                         # Check active session
-clara track stop                           # Complete session
-```
+clara [⏸️ No active session]> add "Write proposal" --folder F1 --list F1-L2
+✅ Task saved!
 
-### Example Output
+clara [⏸️ No active session]> track start --task F1-L2-T1
+🎯 Started Focus session S20250727T... (F1-L2-T1) - ends at 14:32
 
-```
+clara [🔵 Focus 24m left]> list --tree
 📁 Work > 📋 Today
 ---
-🔲 [F1-L2-T1] Write proposal  (created 2025‑07‑26 13:20)
-  🔲 [F1-L2-T1.1] Research competitors  (created 2025‑07‑26 13:20)
-  🔲 [F1-L2-T1.2] Create outline  (created 2025‑07‑26 13:20)
-    ✅ [F1-L2-T1.2.1] Draft introduction  (created 2025‑07‑26 13:20)
+🔲 [F1-L2-T1] Write proposal  (created 2025‑07‑27 13:20)
+
+clara [🔵 Focus 15m left]> track extend --minutes 10
+⏰ Extended Focus session by 10 minute(s) - new end time: 14:42
+
+clara [🔵 Focus 25m left]> /exit
+👋 Goodbye!
 ```
 
-#### Time Tracking Example
+### Timer Display States
+
+The REPL prompt shows your current session status in real-time:
 
 ```bash
-$ clara track start --kind focus --task F1-L2-T1
-🎯 Started Focus session S20250726T134713Z (F1-L2-T1)
+clara [⏸️ No active session]>           # No timer running
+clara [🔵 Focus 23m left]>              # Time remaining in session
+clara [🔴 Focus OVERTIME +5m]>          # Session has overrun
+clara [⏳ Meeting 1h30m]>               # Running time (no target)
+```
 
-$ clara track current
-🔄 Active Focus session S20250726T134713Z - 0h 25m elapsed (F1-L2-T1)
+### In-Terminal Notifications
 
-$ clara track stop
-⏹️ Stopped Focus session S20250726T134713Z after 0h 25m (F1-L2-T1)
+When your session is ending, Clara displays alerts directly in the REPL:
+
+```bash
+clara [🔵 Focus 2m left]> 
+
+🔔 Clara Timer: Focus session ending in 2 minute(s)!
+
+clara [🔵 Focus 1m left]> track extend
+⏰ Extended Focus session by 5 minute(s) - new end time: 14:47
 ```
 
 ## Architecture
@@ -108,52 +117,87 @@ Workspace
 - **Unlimited nesting** for complex project breakdowns
 - **Fast lookup** with recursive navigation helpers
 
-## Commands
+## Interactive Commands
+
+All commands are used within the Clara REPL. Type `/help` for a quick reference.
 
 ### Folder Management
 ```bash
-clara folder add <name>              # Create new folder
-clara folder list                    # List all folders
+folder add <name>              # Create new folder
+folder list                    # List all folders
 ```
 
 ### List Management  
 ```bash
-clara folder lists add --folder <id> <name>    # Create list in folder
-clara folder lists list --folder <id>          # List all lists in folder
+folder lists add --folder <id> <name>    # Create list in folder
+folder lists list --folder <id>          # List all lists in folder
 ```
 
 ### Task Management
 ```bash
-clara add <title> --folder <id> --list <id>    # Create root task
-clara subtask <title> --parent <task-id>       # Create subtask
-clara done <task-id>                           # Mark task complete
+add <title> --folder <id> --list <id>    # Create root task
+subtask <title> --parent <task-id>       # Create subtask
+done <task-id>                           # Mark task complete
 ```
 
 ### Display
 ```bash
-clara list                           # Show all tasks (flat)
-clara list --tree                   # Show all tasks (tree view)
-clara list --folder <id>            # Filter by folder
-clara list --folder <id> --list <id> --tree  # Filter and tree view
+list                           # Show all tasks (flat)
+list --tree                   # Show all tasks (tree view)
+list --folder <id>            # Filter by folder
+list --folder <id> --list <id> --tree  # Filter and tree view
 ```
 
-### Time Tracking
+### Pomodoro Time Tracking
 ```bash
-clara track start                          # Start focus session (default)
-clara track start --kind <type>           # Start specific session (focus/break/meeting)
-clara track start --task <task-id>        # Link session to task
-clara track start --kind focus --task F1-L2-T1  # Combined options
-clara track current                       # Show active session status
-clara track stop                          # Complete active session
+track start                               # Start 25min focus session
+track start --kind <type>                # Session types: focus/break/meeting  
+track start --task <task-id>             # Link session to task
+track start --duration <minutes>         # Custom duration override
+track start --kind focus --task F1-L2-T1 --duration 45  # Combined options
+track current                            # Show active session status
+track extend                             # Extend by 5min (default)
+track extend --minutes <minutes>         # Extend by custom duration
+track stop                               # Complete active session
 ```
+
+### Special Commands
+```bash
+/help                          # Show command help
+/exit or /quit                 # Exit Clara
+```
+
+**Session Types & Default Durations:**
+- `focus`: 25 minutes (classic Pomodoro)
+- `break`: 5 minutes (short break)
+- `meeting`: 60 minutes (longer sessions)
 
 ## Data Storage
 
-Clara stores data in `~/.local/share/clara/` as structured JSON:
+Clara stores data locally in structured files:
 
+**Data Directory:** `~/.local/share/clara/`
 - **`workspace.json`** - Task hierarchy with full folder/list/task structure
-- **`sessions.json`** - Completed time tracking sessions
+- **`sessions.json`** - Completed time tracking sessions with Pomodoro metadata
 - **`active_session.json`** - Current active session (crash recovery)
+
+**Config Directory:** `~/.config/clara/`
+- **`settings.toml`** - Pomodoro timing configuration (auto-generated with defaults)
+
+### Configuration
+
+Clara automatically creates `~/.config/clara/settings.toml` on first use:
+
+```toml
+# Pomodoro session durations (minutes)
+focus_duration = 25
+break_duration = 5  
+meeting_duration = 60
+
+# Extension settings
+extend_duration = 5       # Default extension time
+warn_before_minutes = 2   # Alert before session ends
+```
 
 ## Contributing
 

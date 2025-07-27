@@ -10,11 +10,17 @@ pub enum Kind {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Session {
-    pub id: String,              // "S20250726T174501Z"
+    pub id: String,
     pub kind: Kind,
     pub task_id: Option<String>, // dot-path ID, or None for uncoupled
     pub start: DateTime<Utc>,
     pub end: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub target_end: Option<DateTime<Utc>>,   // scheduled finish (start + preset)
+    #[serde(default)]
+    pub warned: bool,                        // has "about-to-end" alert fired?
+    #[serde(default)]
+    pub extend_count: u8,                    // number of 5-min extensions
 }
 
 impl Session {
@@ -26,11 +32,6 @@ impl Session {
     /// Calculate duration if session has ended
     pub fn duration(&self) -> Option<chrono::Duration> {
         self.end.map(|end| end - self.start)
-    }
-    
-    /// Check if session is currently active (no end time)
-    pub fn is_active(&self) -> bool {
-        self.end.is_none()
     }
 }
 
