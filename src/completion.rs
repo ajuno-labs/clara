@@ -76,6 +76,108 @@ fn extract_path_from_command_with_position(line: &str) -> Option<(String, usize)
 
     // Handle different command patterns
     match parsed_args[0].as_str() {
+        // New noun + verb commands
+        "folder" => {
+            if parsed_args.len() >= 2 {
+                match parsed_args[1].as_str() {
+                    "delete" | "update" => {
+                        if parsed_args.len() >= 3 {
+                            let folder_name = &parsed_args[2];
+                            let start_pos = find_quoted_arg_start_position(line, 2);
+                            return Some((folder_name.clone(), start_pos));
+                        } else if parsed_args.len() == 2 {
+                            // User typed: folder delete or folder update
+                            return Some(("".to_string(), line.len()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        "list" => {
+            if parsed_args.len() >= 2 {
+                match parsed_args[1].as_str() {
+                    "add" => {
+                        if parsed_args.len() >= 4 {
+                            let folder_name = &parsed_args[3];
+                            let start_pos = find_quoted_arg_start_position(line, 3);
+                            return Some((folder_name.clone(), start_pos));
+                        } else if parsed_args.len() == 3 {
+                            // User typed: list add <name>
+                            return Some(("".to_string(), line.len()));
+                        }
+                    }
+                    "list" => {
+                        if parsed_args.len() >= 3 {
+                            let folder_name = &parsed_args[2];
+                            let start_pos = find_quoted_arg_start_position(line, 2);
+                            return Some((folder_name.clone(), start_pos));
+                        } else if parsed_args.len() == 2 {
+                            // User typed: list list
+                            return Some(("".to_string(), line.len()));
+                        }
+                    }
+                    "delete" | "update" => {
+                        if parsed_args.len() >= 3 {
+                            let path = &parsed_args[2];
+                            if path.contains('/') {
+                                let start_pos = find_quoted_arg_start_position(line, 2);
+                                return Some((path.clone(), start_pos));
+                            }
+                        } else if parsed_args.len() == 2 {
+                            // User typed: list delete or list update
+                            return Some(("".to_string(), line.len()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        "task" => {
+            if parsed_args.len() >= 2 {
+                match parsed_args[1].as_str() {
+                    "add" => {
+                        if parsed_args.len() >= 4 {
+                            let path = &parsed_args[3];
+                            if path.contains('/') {
+                                let start_pos = find_quoted_arg_start_position(line, 3);
+                                return Some((path.clone(), start_pos));
+                            }
+                        } else if parsed_args.len() == 3 {
+                            // User typed: task add <title>
+                            return Some(("".to_string(), line.len()));
+                        }
+                    }
+                    "list" => {
+                        if parsed_args.len() >= 3 {
+                            let path = &parsed_args[2];
+                            if path.contains('/') {
+                                let start_pos = find_quoted_arg_start_position(line, 2);
+                                return Some((path.clone(), start_pos));
+                            }
+                        } else if parsed_args.len() == 2 {
+                            // User typed: task list
+                            return Some(("".to_string(), line.len()));
+                        }
+                    }
+                    "delete" | "update" | "done" => {
+                        if parsed_args.len() >= 3 {
+                            let path = &parsed_args[2];
+                            if path.contains('/') {
+                                let start_pos = find_quoted_arg_start_position(line, 2);
+                                return Some((path.clone(), start_pos));
+                            }
+                        } else if parsed_args.len() == 2 {
+                            // User typed: task delete/update/done
+                            return Some(("".to_string(), line.len()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        // Legacy commands
         "add" => {
             // add "task title" folder/list/path
             if parsed_args.len() >= 3 {
@@ -108,6 +210,36 @@ fn extract_path_from_command_with_position(line: &str) -> Option<(String, usize)
                 return Some((path.clone(), start_pos));
             } else if parsed_args.len() == 1 {
                 // User typed: done
+                // Show all available folders to start the path
+                return Some(("".to_string(), line.len()));
+            }
+        }
+        "delete" => {
+            // delete folder/list/task/path
+            if parsed_args.len() >= 2 {
+                let path = &parsed_args[1];
+                // Only provide path completion if the argument contains '/'
+                if path.contains('/') {
+                    let start_pos = find_quoted_arg_start_position(line, 1);
+                    return Some((path.clone(), start_pos));
+                }
+            } else if parsed_args.len() == 1 {
+                // User typed: delete
+                // Show all available folders to start the path
+                return Some(("".to_string(), line.len()));
+            }
+        }
+        "update" => {
+            // update folder/list/task/path
+            if parsed_args.len() >= 2 {
+                let path = &parsed_args[1];
+                // Only provide path completion if the argument contains '/'
+                if path.contains('/') {
+                    let start_pos = find_quoted_arg_start_position(line, 1);
+                    return Some((path.clone(), start_pos));
+                }
+            } else if parsed_args.len() == 1 {
+                // User typed: update
                 // Show all available folders to start the path
                 return Some(("".to_string(), line.len()));
             }
@@ -249,5 +381,61 @@ mod tests {
     fn test_extract_path_from_done_command() {
         let result = extract_path_from_command("done \"Work/Today/Completed task\"");
         assert_eq!(result, Some("Work/Today/Completed task".to_string()));
+    }
+
+    #[test]
+    fn test_extract_path_from_delete_command() {
+        let result = extract_path_from_command("delete Work/Today/Task");
+        assert_eq!(result, Some("Work/Today/Task".to_string()));
+        
+        // Should not provide completion for ID-based delete
+        let result = extract_path_from_command("delete T123");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_path_from_update_command() {
+        let result = extract_path_from_command("update Work/Today/Task");
+        assert_eq!(result, Some("Work/Today/Task".to_string()));
+        
+        // Should not provide completion for ID-based update
+        let result = extract_path_from_command("update T123");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_path_from_new_folder_commands() {
+        let result = extract_path_from_command("folder delete Work");
+        assert_eq!(result, Some("Work".to_string()));
+        
+        let result = extract_path_from_command("folder update Work");
+        assert_eq!(result, Some("Work".to_string()));
+    }
+
+    #[test]
+    fn test_extract_path_from_new_list_commands() {
+        let result = extract_path_from_command("list add Today Work");
+        assert_eq!(result, Some("Work".to_string()));
+        
+        let result = extract_path_from_command("list list Work");
+        assert_eq!(result, Some("Work".to_string()));
+        
+        let result = extract_path_from_command("list delete Work/Today");
+        assert_eq!(result, Some("Work/Today".to_string()));
+    }
+
+    #[test]
+    fn test_extract_path_from_new_task_commands() {
+        let result = extract_path_from_command("task add \"New task\" Work/Today");
+        assert_eq!(result, Some("Work/Today".to_string()));
+        
+        let result = extract_path_from_command("task list Work/Today");
+        assert_eq!(result, Some("Work/Today".to_string()));
+        
+        let result = extract_path_from_command("task delete Work/Today/Task");
+        assert_eq!(result, Some("Work/Today/Task".to_string()));
+        
+        let result = extract_path_from_command("task done Work/Today/Task");
+        assert_eq!(result, Some("Work/Today/Task".to_string()));
     }
 }

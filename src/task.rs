@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct Task {
     pub id: String,
     pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub done: bool,
     #[serde(default)]

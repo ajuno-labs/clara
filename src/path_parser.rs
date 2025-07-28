@@ -505,12 +505,14 @@ mod tests {
         let task1 = Task {
             id: "T1".to_string(),
             title: "Task1".to_string(),
+            description: None,
             done: false,
             created_at: Utc::now(),
             subtasks: vec![
                 Task {
                     id: "T1.1".to_string(),
                     title: "Subtask1".to_string(),
+                    description: None,
                     done: false,
                     created_at: Utc::now(),
                     subtasks: vec![],

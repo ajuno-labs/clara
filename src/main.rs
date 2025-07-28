@@ -15,50 +15,83 @@ use rustyline::error::ReadlineError;
 
 #[derive(Debug)]
 enum Commands {
+    // New noun + verb structure
     Folder {
-        action: FolderCmd,
-    },
-    Add {
-        title: String,
-        folder: String,
-        list: String,
-    },
-    AddPath {
-        title: String,
-        path: String,
-    },
-    Subtask {
-        title: String,
-        parent: String,
-    },
-    SubtaskPath {
-        title: String,
-        path: String,
+        action: FolderAction,
     },
     List {
-        folder: Option<String>,
-        list: Option<String>,
-        tree: bool,
+        action: ListAction,
+    },
+    Task {
+        action: TaskAction,
     },
     Track {
         action: TrackCmd,
     },
-    Done {
+    
+    // Legacy commands for backward compatibility
+    LegacyAdd {
+        title: String,
+        folder: String,
+        list: String,
+    },
+    LegacyAddPath {
+        title: String,
+        path: String,
+    },
+    LegacySubtask {
+        title: String,
+        parent: String,
+    },
+    LegacySubtaskPath {
+        title: String,
+        path: String,
+    },
+    LegacyList {
+        folder: Option<String>,
+        list: Option<String>,
+        tree: bool,
+    },
+    LegacyDone {
         id: String,
+    },
+    LegacyDelete {
+        target: String,
+    },
+    LegacyDeletePath {
+        path: String,
+    },
+    LegacyUpdate {
+        target: String,
+    },
+    LegacyUpdatePath {
+        path: String,
     },
 }
 
 #[derive(Debug)]
-enum FolderCmd {
+enum FolderAction {
     Add { name: String },
     List,
-    Lists(ListCmd),
+    Delete { path: String },
+    Update { path: String },
 }
 
 #[derive(Debug)]
-enum ListCmd {
-    Add { folder: String, name: String },
-    List { folder: String },
+enum ListAction {
+    Add { name: String, folder_path: String },
+    List { folder_path: String },
+    Delete { path: String },
+    Update { path: String },
+}
+
+#[derive(Debug)]
+enum TaskAction {
+    Add { title: String, list_path: String },
+    List { list_path: String, tree: bool },
+    Delete { path: String },
+    Update { path: String },
+    Done { path: String },
 }
 
 #[derive(Debug)]
@@ -378,31 +411,47 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
         match args[0] {
             "/exit" | "/quit" => return Err("exit".into()),
             "/help" => {
-                println!("Available commands:");
+                println!("Clara Commands (noun + verb pattern with path completion):");
+                println!();
+                println!("📁 FOLDER COMMANDS:");
                 println!("  folder add <name>");
                 println!("  folder list");
-                println!("  folder lists add --folder <id> <name>");
-                println!("  folder lists list --folder <id>");
-                println!("  add <title> <folder/list/path>          # NEW: path-based syntax");
-                println!("  add <title> --folder <id> --list <id>    # OLD: flag-based syntax");
-                println!("  subtask <title> <folder/list/task/path>  # NEW: path-based syntax");
-                println!("  subtask <title> --parent <id>            # OLD: flag-based syntax");
-                println!("  list [--folder <id>] [--list <id>] [--tree]");
-                println!(
-                    "  track start [--kind <type>] [--task <id>] [--duration <mins>] [--d|--it]"
-                );
+                println!("  folder delete <name>");
+                println!("  folder update <name>");
+                println!();
+                println!("📋 LIST COMMANDS:");
+                println!("  list add <name> <folder_name>");
+                println!("  list list <folder_name>");
+                println!("  list delete <folder_name/list_name>");
+                println!("  list update <folder_name/list_name>");
+                println!();
+                println!("✅ TASK COMMANDS:");
+                println!("  task add <title> <folder_name/list_name>");
+                println!("  task list <folder_name/list_name> [--tree]");
+                println!("  task delete <folder_name/list_name/task_path>");
+                println!("  task update <folder_name/list_name/task_path>");
+                println!("  task done <folder_name/list_name/task_path>");
+                println!();
+                println!("⏱️  TRACK COMMANDS:");
+                println!("  track start [--kind <type>] [--task <path>] [--duration <mins>] [--d|--it]");
                 println!("    --d: detach mode (run in background)");
                 println!("    --it: interactive mode (show live timer)");
                 println!("  track stop");
                 println!("  track current");
                 println!("  track extend [--minutes <mins>]");
-                println!("  done <id>");
-                println!("  /exit, /quit - Exit");
                 println!();
-                println!("Path examples (with tab completion):");
-                println!("  add \"Write report\" Work/Today");
-                println!("  subtask \"Research\" Work/Today/Write report");
-                println!("  add \"Sub-subtask\" Work/Today/Write report/Research");
+                println!("💡 EXAMPLES (all support tab completion):");
+                println!("  folder add Work");
+                println!("  list add Today Work");
+                println!("  task add \"Write report\" Work/Today");
+                println!("  task add \"Research\" Work/Today/Write report  # Creates subtask");
+                println!("  task delete Work/Today/Write report");
+                println!("  task done Work/Today/Write report/Research");
+                println!();
+                println!("🔄 LEGACY COMMANDS (still supported):");
+                println!("  add, subtask, list, done, delete, update");
+                println!();
+                println!("  /exit, /quit - Exit");
                 return Err("help_shown".into());
             }
             _ => return Err(format!("Unknown slash command: {}", args[0]).into()),
@@ -412,7 +461,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
     match args[0] {
         "folder" => {
             if args.len() < 2 {
-                return Err("Missing folder subcommand".into());
+                return Err("Missing folder action (add, list, delete, update)".into());
             }
             match args[1] {
                 "add" => {
@@ -420,49 +469,181 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                         return Err("Missing folder name".into());
                     }
                     Ok(Commands::Folder {
-                        action: FolderCmd::Add {
+                        action: FolderAction::Add {
                             name: args[2].to_string(),
                         },
                     })
                 }
                 "list" => Ok(Commands::Folder {
-                    action: FolderCmd::List,
+                    action: FolderAction::List,
                 }),
-                "lists" => {
+                "delete" => {
                     if args.len() < 3 {
-                        return Err("Missing lists subcommand".into());
+                        return Err("Missing folder name".into());
                     }
-                    match args[2] {
-                        "add" => {
-                            let folder = args
-                                .iter()
-                                .position(|&x| x == "--folder")
-                                .and_then(|i| args.get(i + 1))
-                                .ok_or("Missing --folder argument")?;
-                            let name = args.last().ok_or("Missing list name")?;
-                            Ok(Commands::Folder {
-                                action: FolderCmd::Lists(ListCmd::Add {
-                                    folder: folder.to_string(),
-                                    name: name.to_string(),
-                                }),
-                            })
+                    Ok(Commands::Folder {
+                        action: FolderAction::Delete {
+                            path: args[2].to_string(),
+                        },
+                    })
+                }
+                "update" => {
+                    if args.len() < 3 {
+                        return Err("Missing folder name".into());
+                    }
+                    Ok(Commands::Folder {
+                        action: FolderAction::Update {
+                            path: args[2].to_string(),
+                        },
+                    })
+                }
+                _ => Err("Unknown folder action. Use: add, list, delete, update".into()),
+            }
+        }
+        "list" => {
+            // Check if this is the new noun + verb pattern by looking at the second argument
+            if args.len() >= 2 {
+                match args[1] {
+                    "add" => {
+                        if args.len() < 4 {
+                            return Err("Usage: list add <name> <folder_name>".into());
                         }
-                        "list" => {
-                            let folder = args
-                                .iter()
-                                .position(|&x| x == "--folder")
-                                .and_then(|i| args.get(i + 1))
-                                .ok_or("Missing --folder argument")?;
-                            Ok(Commands::Folder {
-                                action: FolderCmd::Lists(ListCmd::List {
-                                    folder: folder.to_string(),
-                                }),
-                            })
+                        return Ok(Commands::List {
+                            action: ListAction::Add {
+                                name: args[2].to_string(),
+                                folder_path: args[3].to_string(),
+                            },
+                        });
+                    }
+                    "list" => {
+                        if args.len() < 3 {
+                            return Err("Usage: list list <folder_name>".into());
                         }
-                        _ => Err("Unknown lists subcommand".into()),
+                        return Ok(Commands::List {
+                            action: ListAction::List {
+                                folder_path: args[2].to_string(),
+                            },
+                        });
+                    }
+                    "delete" => {
+                        if args.len() < 3 {
+                            return Err("Usage: list delete <folder_name/list_name>".into());
+                        }
+                        return Ok(Commands::List {
+                            action: ListAction::Delete {
+                                path: args[2].to_string(),
+                            },
+                        });
+                    }
+                    "update" => {
+                        if args.len() < 3 {
+                            return Err("Usage: list update <folder_name/list_name>".into());
+                        }
+                        return Ok(Commands::List {
+                            action: ListAction::Update {
+                                path: args[2].to_string(),
+                            },
+                        });
+                    }
+                    _ => {
+                        // Fall through to legacy list command parsing below
                     }
                 }
-                _ => Err("Unknown folder subcommand".into()),
+            }
+            
+            // Legacy list command parsing
+            let mut folder = None;
+            let mut list = None;
+            let mut tree = false;
+
+            let mut i = 1;
+            while i < args.len() {
+                match args[i] {
+                    "--folder" => {
+                        if i + 1 < args.len() {
+                            folder = Some(args[i + 1].to_string());
+                            i += 2;
+                        } else {
+                            return Err("Missing value for --folder".into());
+                        }
+                    }
+                    "--list" => {
+                        if i + 1 < args.len() {
+                            list = Some(args[i + 1].to_string());
+                            i += 2;
+                        } else {
+                            return Err("Missing value for --list".into());
+                        }
+                    }
+                    "--tree" => {
+                        tree = true;
+                        i += 1;
+                    }
+                    _ => i += 1,
+                }
+            }
+
+            Ok(Commands::LegacyList { folder, list, tree })
+        }
+        "task" => {
+            if args.len() < 2 {
+                return Err("Missing task action (add, list, delete, update, done)".into());
+            }
+            match args[1] {
+                "add" => {
+                    if args.len() < 4 {
+                        return Err("Usage: task add <title> <folder_name/list_name>".into());
+                    }
+                    Ok(Commands::Task {
+                        action: TaskAction::Add {
+                            title: args[2].to_string(),
+                            list_path: args[3].to_string(),
+                        },
+                    })
+                }
+                "list" => {
+                    if args.len() < 3 {
+                        return Err("Usage: task list <folder_name/list_name> [--tree]".into());
+                    }
+                    let tree = args.contains(&"--tree");
+                    Ok(Commands::Task {
+                        action: TaskAction::List {
+                            list_path: args[2].to_string(),
+                            tree,
+                        },
+                    })
+                }
+                "delete" => {
+                    if args.len() < 3 {
+                        return Err("Usage: task delete <folder_name/list_name/task_path>".into());
+                    }
+                    Ok(Commands::Task {
+                        action: TaskAction::Delete {
+                            path: args[2].to_string(),
+                        },
+                    })
+                }
+                "update" => {
+                    if args.len() < 3 {
+                        return Err("Usage: task update <folder_name/list_name/task_path>".into());
+                    }
+                    Ok(Commands::Task {
+                        action: TaskAction::Update {
+                            path: args[2].to_string(),
+                        },
+                    })
+                }
+                "done" => {
+                    if args.len() < 3 {
+                        return Err("Usage: task done <folder_name/list_name/task_path>".into());
+                    }
+                    Ok(Commands::Task {
+                        action: TaskAction::Done {
+                            path: args[2].to_string(),
+                        },
+                    })
+                }
+                _ => Err("Unknown task action. Use: add, list, delete, update, done".into()),
             }
         }
         "track" => {
@@ -544,40 +725,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                 _ => Err("Unknown track subcommand".into()),
             }
         }
-        "list" => {
-            let mut folder = None;
-            let mut list = None;
-            let mut tree = false;
-
-            let mut i = 1;
-            while i < args.len() {
-                match args[i] {
-                    "--folder" => {
-                        if i + 1 < args.len() {
-                            folder = Some(args[i + 1].to_string());
-                            i += 2;
-                        } else {
-                            return Err("Missing value for --folder".into());
-                        }
-                    }
-                    "--list" => {
-                        if i + 1 < args.len() {
-                            list = Some(args[i + 1].to_string());
-                            i += 2;
-                        } else {
-                            return Err("Missing value for --list".into());
-                        }
-                    }
-                    "--tree" => {
-                        tree = true;
-                        i += 1;
-                    }
-                    _ => i += 1,
-                }
-            }
-
-            Ok(Commands::List { folder, list, tree })
-        }
+        // Legacy commands for backward compatibility
         "add" => {
             if args.len() < 2 {
                 return Err("Missing task title".into());
@@ -587,7 +735,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
 
             // Check if using new path syntax (contains '/')
             if args.len() == 3 && args[2].contains('/') {
-                return Ok(Commands::AddPath {
+                return Ok(Commands::LegacyAddPath {
                     title,
                     path: args[2].to_string(),
                 });
@@ -612,7 +760,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                 }
             }
 
-            Ok(Commands::Add {
+            Ok(Commands::LegacyAdd {
                 title,
                 folder: folder.ok_or("Missing --folder argument or path")?,
                 list: list.ok_or("Missing --list argument or path")?,
@@ -627,7 +775,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
 
             // Check if using new path syntax (contains '/')
             if args.len() == 3 && args[2].contains('/') {
-                return Ok(Commands::SubtaskPath {
+                return Ok(Commands::LegacySubtaskPath {
                     title,
                     path: args[2].to_string(),
                 });
@@ -645,15 +793,43 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                 return Err("Missing --parent argument or path".into());
             };
 
-            Ok(Commands::Subtask { title, parent })
+            Ok(Commands::LegacySubtask { title, parent })
         }
         "done" => {
             if args.len() < 2 {
                 return Err("Missing task ID".into());
             }
-            Ok(Commands::Done {
+            Ok(Commands::LegacyDone {
                 id: args[1].to_string(),
             })
+        }
+        "delete" => {
+            if args.len() < 2 {
+                return Err("Missing target ID or path".into());
+            }
+            
+            let target = args[1].to_string();
+            
+            // Check if using path syntax (contains '/')
+            if target.contains('/') {
+                Ok(Commands::LegacyDeletePath { path: target })
+            } else {
+                Ok(Commands::LegacyDelete { target })
+            }
+        }
+        "update" => {
+            if args.len() < 2 {
+                return Err("Missing target ID or path".into());
+            }
+            
+            let target = args[1].to_string();
+            
+            // Check if using path syntax (contains '/')
+            if target.contains('/') {
+                Ok(Commands::LegacyUpdatePath { path: target })
+            } else {
+                Ok(Commands::LegacyUpdate { target })
+            }
         }
         _ => Err(format!("Unknown command: {}", args[0]).into()),
     }
@@ -661,49 +837,61 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
 
 fn execute_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     match command {
+        // New noun + verb commands
         Commands::Folder { action } => match action {
-            FolderCmd::Add { name } => {
-                workspace_storage::add_folder(name)?;
-                println!("📁 Folder created!");
+            FolderAction::Add { name } => {
+                workspace_storage::add_folder(name.clone())?;
+                println!("📁 Created folder '{}'!", name);
             }
-            FolderCmd::List => {
-                for f in workspace_storage::list_folders()? {
-                    println!("{}  {}", f.id, f.name);
-                }
-            }
-            FolderCmd::Lists(list_cmd) => match list_cmd {
-                ListCmd::Add { folder, name } => {
-                    workspace_storage::add_list(folder, name)?;
-                    println!("📋 List created!");
-                }
-                ListCmd::List { folder } => {
-                    for list in workspace_storage::list_lists(folder)? {
-                        println!("{}  {}", list.id, list.name);
+            FolderAction::List => {
+                let folders = workspace_storage::list_folders()?;
+                if folders.is_empty() {
+                    println!("No folders found.");
+                } else {
+                    println!("📁 Folders:");
+                    for folder in folders {
+                        println!("  {} ({})", folder.name, folder.id);
                     }
                 }
-            },
+            }
+            FolderAction::Delete { path } => {
+                handle_folder_delete(path)?;
+            }
+            FolderAction::Update { path } => {
+                handle_folder_update(path)?;
+            }
         },
-        Commands::Add {
-            title,
-            folder,
-            list,
-        } => {
-            workspace_storage::add_task(folder, list, title)?;
-            println!("✅ Task saved!");
-        }
-        Commands::AddPath { title, path } => {
-            handle_add_with_path(title, path)?;
-        }
-        Commands::Subtask { title, parent } => {
-            workspace_storage::add_subtask(parent, title)?;
-            println!("✅ Subtask saved!");
-        }
-        Commands::SubtaskPath { title, path } => {
-            handle_subtask_with_path(title, path)?;
-        }
-        Commands::List { folder, list, tree } => {
-            workspace_storage::list_tasks(folder, list, tree)?;
-        }
+        Commands::List { action } => match action {
+            ListAction::Add { name, folder_path } => {
+                handle_list_add(name, folder_path)?;
+            }
+            ListAction::List { folder_path } => {
+                handle_list_list(folder_path)?;
+            }
+            ListAction::Delete { path } => {
+                handle_list_delete(path)?;
+            }
+            ListAction::Update { path } => {
+                handle_list_update(path)?;
+            }
+        },
+        Commands::Task { action } => match action {
+            TaskAction::Add { title, list_path } => {
+                handle_task_add(title, list_path)?;
+            }
+            TaskAction::List { list_path, tree } => {
+                handle_task_list(list_path, tree)?;
+            }
+            TaskAction::Delete { path } => {
+                handle_task_delete(path)?;
+            }
+            TaskAction::Update { path } => {
+                handle_task_update(path)?;
+            }
+            TaskAction::Done { path } => {
+                handle_task_done(path)?;
+            }
+        },
         Commands::Track { action } => match action {
             TrackCmd::Start {
                 kind,
@@ -723,12 +911,55 @@ fn execute_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> 
                 handle_track_extend(minutes)?;
             }
         },
-        Commands::Done { id } => {
+        
+        // Legacy commands for backward compatibility
+        Commands::LegacyAdd {
+            title,
+            folder,
+            list,
+        } => {
+            workspace_storage::add_task(folder, list, title)?;
+            println!("✅ Task saved!");
+        }
+        Commands::LegacyAddPath { title, path } => {
+            handle_add_with_path(title, path)?;
+        }
+        Commands::LegacySubtask { title, parent } => {
+            workspace_storage::add_subtask(parent, title)?;
+            println!("✅ Subtask saved!");
+        }
+        Commands::LegacySubtaskPath { title, path } => {
+            handle_subtask_with_path(title, path)?;
+        }
+        Commands::LegacyList { folder, list, tree } => {
+            workspace_storage::list_tasks(folder, list, tree)?;
+        }
+        Commands::LegacyDone { id } => {
             if workspace_storage::mark_task_done(id.clone())? {
                 println!("🎉 Task #{id} marked done!");
             } else {
                 println!("⚠️  No task with id {id}.");
             }
+        }
+        Commands::LegacyDelete { target } => {
+            if workspace_storage::delete_item(target.clone())? {
+                println!("🗑️  Deleted item #{target}!");
+            } else {
+                println!("⚠️  No item with id {target}.");
+            }
+        }
+        Commands::LegacyDeletePath { path } => {
+            handle_delete_with_path(path)?;
+        }
+        Commands::LegacyUpdate { target } => {
+            match workspace_storage::update_item_with_editor(target.clone()) {
+                Ok(true) => println!("✏️  Updated item #{target}!"),
+                Ok(false) => println!("⚠️  No item with id {target}."),
+                Err(e) => println!("❌ Error updating item: {}", e),
+            }
+        }
+        Commands::LegacyUpdatePath { path } => {
+            handle_update_with_path(path)?;
         }
     }
 
@@ -799,6 +1030,313 @@ fn handle_subtask_with_path(title: String, path: String) -> Result<(), Box<dyn s
         println!("✅ Subtask saved to {}!", path_display);
     } else {
         return Err("Could not resolve parent task ID".into());
+    }
+
+    Ok(())
+}
+
+// New command handlers
+fn handle_folder_delete(name: String) -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = workspace_storage::load()?;
+    let folder = workspace
+        .folders
+        .iter()
+        .find(|f| f.name == name)
+        .ok_or_else(|| format!("Folder '{}' not found", name))?;
+    
+    if workspace_storage::delete_item(folder.id.clone())? {
+        println!("🗑️  Deleted folder '{}'!", name);
+    } else {
+        println!("⚠️  Could not delete folder '{}'.", name);
+    }
+    Ok(())
+}
+
+fn handle_folder_update(name: String) -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = workspace_storage::load()?;
+    let folder = workspace
+        .folders
+        .iter()
+        .find(|f| f.name == name)
+        .ok_or_else(|| format!("Folder '{}' not found", name))?;
+    
+    match workspace_storage::update_item_with_editor(folder.id.clone()) {
+        Ok(true) => println!("✏️  Updated folder '{}'!", name),
+        Ok(false) => println!("⚠️  Could not find folder '{}'.", name),
+        Err(e) => println!("❌ Error updating folder: {}", e),
+    }
+    Ok(())
+}
+
+fn handle_list_add(name: String, folder_path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = workspace_storage::load()?;
+    let folder = workspace
+        .folders
+        .iter()
+        .find(|f| f.name == folder_path)
+        .ok_or_else(|| format!("Folder '{}' not found", folder_path))?;
+    
+    workspace_storage::add_list(folder.id.clone(), name.clone())?;
+    println!("📋 Created list '{}' in folder '{}'!", name, folder_path);
+    Ok(())
+}
+
+fn handle_list_list(folder_path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = workspace_storage::load()?;
+    let folder = workspace
+        .folders
+        .iter()
+        .find(|f| f.name == folder_path)
+        .ok_or_else(|| format!("Folder '{}' not found", folder_path))?;
+    
+    let lists = workspace_storage::list_lists(folder.id.clone())?;
+    if lists.is_empty() {
+        println!("No lists found in folder '{}'.", folder_path);
+    } else {
+        println!("📋 Lists in folder '{}':", folder_path);
+        for list in lists {
+            println!("  {} ({})", list.name, list.id);
+        }
+    }
+    Ok(())
+}
+
+fn handle_list_delete(path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    if !parsed_path.is_list_level() {
+        return Err("Path must be folder_name/list_name format".into());
+    }
+    
+    let workspace = workspace_storage::load()?;
+    let (_, list_id, _) = resolve_path_to_ids(&parsed_path, &workspace)?;
+    
+    if workspace_storage::delete_item(list_id.clone())? {
+        println!("🗑️  Deleted list '{}'!", path);
+    } else {
+        println!("⚠️  Could not delete list '{}'.", path);
+    }
+    Ok(())
+}
+
+fn handle_list_update(path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    if !parsed_path.is_list_level() {
+        return Err("Path must be folder_name/list_name format".into());
+    }
+    
+    let workspace = workspace_storage::load()?;
+    let (_, list_id, _) = resolve_path_to_ids(&parsed_path, &workspace)?;
+    
+    match workspace_storage::update_item_with_editor(list_id.clone()) {
+        Ok(true) => println!("✏️  Updated list '{}'!", path),
+        Ok(false) => println!("⚠️  Could not find list '{}'.", path),
+        Err(e) => println!("❌ Error updating list: {}", e),
+    }
+    Ok(())
+}
+
+fn handle_task_add(title: String, list_path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&list_path)?;
+    
+    if parsed_path.is_list_level() {
+        // Adding to a list
+        let workspace = workspace_storage::load()?;
+        let (folder_id, list_id, _) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        workspace_storage::add_task(folder_id, list_id, title.clone())?;
+        println!("✅ Created task '{}' in '{}'!", title, list_path);
+    } else if parsed_path.is_task_level() {
+        // Adding subtask to existing task
+        let workspace = workspace_storage::load()?;
+        let (_, _, parent_task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        if let Some(parent_id) = parent_task_id {
+            workspace_storage::add_subtask(parent_id, title.clone())?;
+            println!("✅ Created subtask '{}' in '{}'!", title, list_path);
+        } else {
+            return Err("Could not resolve parent task ID".into());
+        }
+    } else {
+        return Err("Path must be folder_name/list_name or folder_name/list_name/task_path format".into());
+    }
+    Ok(())
+}
+
+fn handle_task_list(list_path: String, tree: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&list_path)?;
+    if !parsed_path.is_list_level() {
+        return Err("Path must be folder_name/list_name format".into());
+    }
+    
+    let folder_name = parsed_path.folder.clone();
+    let list_name = parsed_path.list.clone();
+    
+    workspace_storage::list_tasks(Some(folder_name), list_name, tree)?;
+    Ok(())
+}
+
+fn handle_task_delete(path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    if !parsed_path.is_task_level() {
+        return Err("Path must be folder_name/list_name/task_path format".into());
+    }
+    
+    let workspace = workspace_storage::load()?;
+    let (_, _, task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+    
+    if let Some(id) = task_id {
+        if workspace_storage::delete_item(id.clone())? {
+            println!("🗑️  Deleted task '{}'!", path);
+        } else {
+            println!("⚠️  Could not delete task '{}'.", path);
+        }
+    } else {
+        return Err("Could not resolve task ID".into());
+    }
+    Ok(())
+}
+
+fn handle_task_update(path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    if !parsed_path.is_task_level() {
+        return Err("Path must be folder_name/list_name/task_path format".into());
+    }
+    
+    let workspace = workspace_storage::load()?;
+    let (_, _, task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+    
+    if let Some(id) = task_id {
+        match workspace_storage::update_item_with_editor(id.clone()) {
+            Ok(true) => println!("✏️  Updated task '{}'!", path),
+            Ok(false) => println!("⚠️  Could not find task '{}'.", path),
+            Err(e) => println!("❌ Error updating task: {}", e),
+        }
+    } else {
+        return Err("Could not resolve task ID".into());
+    }
+    Ok(())
+}
+
+fn handle_task_done(path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    if !parsed_path.is_task_level() {
+        return Err("Path must be folder_name/list_name/task_path format".into());
+    }
+    
+    let workspace = workspace_storage::load()?;
+    let (_, _, task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+    
+    if let Some(id) = task_id {
+        if workspace_storage::mark_task_done(id.clone())? {
+            println!("🎉 Marked task '{}' as done!", path);
+        } else {
+            println!("⚠️  Could not find task '{}'.", path);
+        }
+    } else {
+        return Err("Could not resolve task ID".into());
+    }
+    Ok(())
+}
+
+fn handle_delete_with_path(path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    let workspace = workspace_storage::load()?;
+
+    if parsed_path.is_folder_only() {
+        // Delete entire folder
+        let folder = workspace
+            .folders
+            .iter()
+            .find(|f| f.name == parsed_path.folder)
+            .ok_or_else(|| format!("Folder '{}' not found", parsed_path.folder))?;
+        
+        if workspace_storage::delete_item(folder.id.clone())? {
+            println!("🗑️  Deleted folder '{}'!", parsed_path.folder);
+        } else {
+            println!("⚠️  Could not delete folder '{}'.", parsed_path.folder);
+        }
+    } else if parsed_path.is_list_level() {
+        // Delete entire list
+        let (_, list_id, _) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        if workspace_storage::delete_item(list_id.clone())? {
+            println!("🗑️  Deleted list '{}/{}'!", parsed_path.folder, parsed_path.list.as_ref().unwrap());
+        } else {
+            println!("⚠️  Could not delete list '{}/{}'.", parsed_path.folder, parsed_path.list.as_ref().unwrap());
+        }
+    } else {
+        // Delete task
+        let (_, _, task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        if let Some(id) = task_id {
+            if workspace_storage::delete_item(id.clone())? {
+                let path_display = if parsed_path.list.is_some() {
+                    format!(
+                        "{}/{}/{}",
+                        parsed_path.folder,
+                        parsed_path.list.as_ref().unwrap(),
+                        parsed_path.tasks.join("/")
+                    )
+                } else {
+                    format!("{}/{}", parsed_path.folder, parsed_path.tasks.join("/"))
+                };
+                println!("🗑️  Deleted task '{}'!", path_display);
+            } else {
+                println!("⚠️  Could not delete task at path '{}'.", path);
+            }
+        } else {
+            return Err("Could not resolve task ID".into());
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_update_with_path(path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    let workspace = workspace_storage::load()?;
+
+    if parsed_path.is_folder_only() {
+        // Update entire folder
+        let folder = workspace
+            .folders
+            .iter()
+            .find(|f| f.name == parsed_path.folder)
+            .ok_or_else(|| format!("Folder '{}' not found", parsed_path.folder))?;
+        
+        match workspace_storage::update_item_with_editor(folder.id.clone()) {
+            Ok(true) => println!("✏️  Updated folder '{}'!", parsed_path.folder),
+            Ok(false) => println!("⚠️  Could not find folder '{}'.", parsed_path.folder),
+            Err(e) => println!("❌ Error updating folder: {}", e),
+        }
+    } else if parsed_path.is_list_level() {
+        // Update entire list
+        let (_, list_id, _) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        match workspace_storage::update_item_with_editor(list_id.clone()) {
+            Ok(true) => println!("✏️  Updated list '{}/{}'!", parsed_path.folder, parsed_path.list.as_ref().unwrap()),
+            Ok(false) => println!("⚠️  Could not find list '{}/{}'.", parsed_path.folder, parsed_path.list.as_ref().unwrap()),
+            Err(e) => println!("❌ Error updating list: {}", e),
+        }
+    } else {
+        // Update task
+        let (_, _, task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        if let Some(id) = task_id {
+            match workspace_storage::update_item_with_editor(id.clone()) {
+                Ok(true) => {
+                    let path_display = if parsed_path.list.is_some() {
+                        format!(
+                            "{}/{}/{}",
+                            parsed_path.folder,
+                            parsed_path.list.as_ref().unwrap(),
+                            parsed_path.tasks.join("/")
+                        )
+                    } else {
+                        format!("{}/{}", parsed_path.folder, parsed_path.tasks.join("/"))
+                    };
+                    println!("✏️  Updated task '{}'!", path_display);
+                },
+                Ok(false) => println!("⚠️  Could not find task at path '{}'.", path),
+                Err(e) => println!("❌ Error updating task: {}", e),
+            }
+        } else {
+            return Err("Could not resolve task ID".into());
+        }
     }
 
     Ok(())
