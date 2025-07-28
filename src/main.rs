@@ -1,28 +1,39 @@
+mod alert;
+mod completion;
+mod navigation;
+mod path_parser;
+mod pomodoro_config;
+mod session;
+mod session_store;
 mod task;
 mod workspace;
 mod workspace_storage;
-mod navigation;
-mod session;
-mod session_store;
-mod pomodoro_config;
-mod alert;
 
+use path_parser::{parse_hierarchical_path, resolve_path_to_ids};
+use rustyline::Editor;
 use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
 
 #[derive(Debug)]
 enum Commands {
     Folder {
         action: FolderCmd,
     },
-    Add { 
+    Add {
         title: String,
         folder: String,
         list: String,
     },
+    AddPath {
+        title: String,
+        path: String,
+    },
     Subtask {
         title: String,
         parent: String,
+    },
+    SubtaskPath {
+        title: String,
+        path: String,
     },
     List {
         folder: Option<String>,
@@ -32,7 +43,9 @@ enum Commands {
     Track {
         action: TrackCmd,
     },
-    Done { id: String },
+    Done {
+        id: String,
+    },
 }
 
 #[derive(Debug)]
@@ -44,13 +57,8 @@ enum FolderCmd {
 
 #[derive(Debug)]
 enum ListCmd {
-    Add { 
-        folder: String,
-        name: String 
-    },
-    List { 
-        folder: String 
-    },
+    Add { folder: String, name: String },
+    List { folder: String },
 }
 
 #[derive(Debug)]
@@ -68,18 +76,20 @@ enum TrackCmd {
     },
 }
 
-fn run_interactive_timer(session: crate::session::Session) -> Result<(), Box<dyn std::error::Error>> {
+fn run_interactive_timer(
+    session: crate::session::Session,
+) -> Result<(), Box<dyn std::error::Error>> {
     use chrono::Utc;
     use std::io::{self, Write, stdin};
+    use std::sync::mpsc;
     use std::thread;
     use std::time::Duration as StdDuration;
-    use std::sync::mpsc;
-    
+
     println!("🎯 Timer Display - Press 'q' + Enter to return to REPL while keeping session active");
-    
+
     // Create channel for input handling
     let (tx, rx) = mpsc::channel();
-    
+
     // Spawn thread to handle user input
     thread::spawn(move || {
         let mut input = String::new();
@@ -93,88 +103,105 @@ fn run_interactive_timer(session: crate::session::Session) -> Result<(), Box<dyn
             }
         }
     });
-    
+
     loop {
         let now = Utc::now();
         let elapsed = now - session.start;
-        
+
         // Clear line and move cursor to beginning
         print!("\r\x1b[K");
-        
+
         if let Some(target_end) = session.target_end {
             if now > target_end {
                 // Session has ended
                 let overtime = now - target_end;
                 let overtime_mins = overtime.num_minutes();
                 let overtime_secs = overtime.num_seconds() % 60;
-                print!("🔴 SESSION ENDED - OVERTIME: +{}m{}s (Press 'q' + Enter to exit)", overtime_mins, overtime_secs);
+                print!(
+                    "🔴 SESSION ENDED - OVERTIME: +{}m{}s (Press 'q' + Enter to exit)",
+                    overtime_mins, overtime_secs
+                );
             } else {
                 // Show countdown
                 let remaining = target_end - now;
                 let remaining_mins = remaining.num_minutes();
                 let remaining_secs = remaining.num_seconds() % 60;
-                print!("⏳ {} Session - {}m{}s remaining (Press 'q' + Enter to exit)", session.kind, remaining_mins, remaining_secs);
+                print!(
+                    "⏳ {} Session - {}m{}s remaining (Press 'q' + Enter to exit)",
+                    session.kind, remaining_mins, remaining_secs
+                );
             }
         } else {
             // Show elapsed time for sessions without target end
             let elapsed_mins = elapsed.num_minutes();
             let elapsed_secs = elapsed.num_seconds() % 60;
-            print!("⏱️  {} Session - {}m{}s elapsed (Press 'q' + Enter to exit)", session.kind, elapsed_mins, elapsed_secs);
+            print!(
+                "⏱️  {} Session - {}m{}s elapsed (Press 'q' + Enter to exit)",
+                session.kind, elapsed_mins, elapsed_secs
+            );
         }
-        
+
         io::stdout().flush()?;
-        
+
         // Check for user input (non-blocking)
         if rx.try_recv().is_ok() {
             println!("\n📝 Returning to REPL - session continues in background");
             break;
         }
-        
+
         // Sleep for 1 second
         thread::sleep(StdDuration::from_millis(1000));
-        
+
         // Check if session still exists (might have been stopped externally)
         if session_store::load_active()?.is_none() {
             println!("\n📝 Session ended externally");
             break;
         }
     }
-    
+
     println!(); // New line after timer display
     Ok(())
 }
 
-fn handle_track_start(kind: Option<String>, task: Option<String>, duration: Option<i64>, mode: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::session::{Session, Kind};
-    use chrono::{Utc, Duration as ChronoDuration};
+fn handle_track_start(
+    kind: Option<String>,
+    task: Option<String>,
+    duration: Option<i64>,
+    mode: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::session::{Kind, Session};
+    use chrono::{Duration as ChronoDuration, Utc};
     use std::str::FromStr;
-    
+
     if let Some(active) = session_store::load_active()? {
-        return Err(format!("Session already active: {} ({}). Stop it first with 'track stop'", 
-                          active.kind, active.id).into());
+        return Err(format!(
+            "Session already active: {} ({}). Stop it first with 'track stop'",
+            active.kind, active.id
+        )
+        .into());
     }
-    
+
     if let Some(ref task_id) = task {
         let ws = workspace_storage::load()?;
         if navigation::find_task(&ws, task_id).is_none() {
             return Err(format!("Task '{}' not found", task_id).into());
         }
     }
-    
+
     let session_kind = match kind {
         Some(k) => Kind::from_str(&k)?,
         None => Kind::Focus,
     };
-    
+
     let config = pomodoro_config::load()?;
     let session_duration = match duration {
         Some(minutes) => ChronoDuration::minutes(minutes),
         None => config.duration_for_kind(&session_kind),
     };
-    
+
     let start_time = Utc::now();
     let target_end_time = start_time + session_duration;
-    
+
     let session = Session {
         id: Session::generate_id(),
         kind: session_kind,
@@ -185,14 +212,16 @@ fn handle_track_start(kind: Option<String>, task: Option<String>, duration: Opti
         warned: false,
         extend_count: 0,
     };
-    
+
     session_store::save_active(&session)?;
-    
+
     let task_info = session.task_id.as_deref().unwrap_or("no task linked");
     let end_time_str = target_end_time.format("%H:%M");
-    println!("🎯 Started {} session {} ({}) - ends at {}", 
-             session.kind, session.id, task_info, end_time_str);
-    
+    println!(
+        "🎯 Started {} session {} ({}) - ends at {}",
+        session.kind, session.id, task_info, end_time_str
+    );
+
     // Handle different modes
     match mode.as_deref() {
         Some("interactive") => {
@@ -207,16 +236,19 @@ fn handle_track_start(kind: Option<String>, task: Option<String>, duration: Opti
             println!("🔌 Session running in background");
         }
         Some(unknown) => {
-            println!("⚠️  Unknown mode '{}', using default detached mode", unknown);
+            println!(
+                "⚠️  Unknown mode '{}', using default detached mode",
+                unknown
+            );
         }
     }
-    
+
     Ok(())
 }
 
 fn handle_track_stop() -> Result<(), Box<dyn std::error::Error>> {
     use chrono::Utc;
-    
+
     let mut active = match session_store::load_active()? {
         Some(session) => session,
         None => {
@@ -224,47 +256,51 @@ fn handle_track_stop() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
-    
+
     active.end = Some(Utc::now());
     let duration = active.duration().unwrap();
-    
+
     session_store::add_session(active.clone())?;
     session_store::clear_active()?;
-    
+
     let hours = duration.num_hours();
     let minutes = duration.num_minutes() % 60;
     let task_info = active.task_id.as_deref().unwrap_or("no task linked");
-    
-    println!("⏹️  Stopped {} session {} after {}h {}m ({})", 
-             active.kind, active.id, hours, minutes, task_info);
-    
+
+    println!(
+        "⏹️  Stopped {} session {} after {}h {}m ({})",
+        active.kind, active.id, hours, minutes, task_info
+    );
+
     Ok(())
 }
 
 fn handle_track_current() -> Result<(), Box<dyn std::error::Error>> {
     use chrono::Utc;
-    
+
     match session_store::load_active()? {
         Some(session) => {
             let elapsed = Utc::now() - session.start;
             let hours = elapsed.num_hours();
             let minutes = elapsed.num_minutes() % 60;
             let task_info = session.task_id.as_deref().unwrap_or("no task linked");
-            
-            println!("🔄 Active {} session {} - {}h {}m elapsed ({})", 
-                     session.kind, session.id, hours, minutes, task_info);
+
+            println!(
+                "🔄 Active {} session {} - {}h {}m elapsed ({})",
+                session.kind, session.id, hours, minutes, task_info
+            );
         }
         None => {
             println!("⏸️  No active session");
         }
     }
-    
+
     Ok(())
 }
 
 fn handle_track_extend(minutes: Option<i64>) -> Result<(), Box<dyn std::error::Error>> {
     use chrono::Duration as ChronoDuration;
-    
+
     let mut active = match session_store::load_active()? {
         Some(session) => session,
         None => {
@@ -272,34 +308,36 @@ fn handle_track_extend(minutes: Option<i64>) -> Result<(), Box<dyn std::error::E
             return Ok(());
         }
     };
-    
+
     let config = pomodoro_config::load()?;
     let extend_duration = match minutes {
         Some(m) => ChronoDuration::minutes(m),
         None => config.extend_duration(),
     };
-    
+
     if let Some(target_end) = active.target_end {
         active.target_end = Some(target_end + extend_duration);
         active.warned = false;
         active.extend_count = active.extend_count.saturating_add(1);
-        
+
         session_store::save_active(&active)?;
-        
+
         let new_end_str = active.target_end.unwrap().format("%H:%M");
         let extend_mins = extend_duration.num_minutes();
-        println!("⏰ Extended {} session by {} minute(s) - new end time: {}", 
-                 active.kind, extend_mins, new_end_str);
+        println!(
+            "⏰ Extended {} session by {} minute(s) - new end time: {}",
+            active.kind, extend_mins, new_end_str
+        );
     } else {
         println!("⚠️  Cannot extend session without target end time");
     }
-    
+
     Ok(())
 }
 
 fn get_status_line() -> String {
     use chrono::Utc;
-    
+
     match session_store::load_active() {
         Ok(Some(session)) => {
             if let Some(target_end) = session.target_end {
@@ -335,7 +373,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
     if args.is_empty() {
         return Err("Empty command".into());
     }
-    
+
     if args[0].starts_with('/') {
         match args[0] {
             "/exit" | "/quit" => return Err("exit".into()),
@@ -345,10 +383,14 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                 println!("  folder list");
                 println!("  folder lists add --folder <id> <name>");
                 println!("  folder lists list --folder <id>");
-                println!("  add <title> --folder <id> --list <id>");
-                println!("  subtask <title> --parent <id>");
+                println!("  add <title> <folder/list/path>          # NEW: path-based syntax");
+                println!("  add <title> --folder <id> --list <id>    # OLD: flag-based syntax");
+                println!("  subtask <title> <folder/list/task/path>  # NEW: path-based syntax");
+                println!("  subtask <title> --parent <id>            # OLD: flag-based syntax");
                 println!("  list [--folder <id>] [--list <id>] [--tree]");
-                println!("  track start [--kind <type>] [--task <id>] [--duration <mins>] [--d|--it]");
+                println!(
+                    "  track start [--kind <type>] [--task <id>] [--duration <mins>] [--d|--it]"
+                );
                 println!("    --d: detach mode (run in background)");
                 println!("    --it: interactive mode (show live timer)");
                 println!("  track stop");
@@ -356,12 +398,17 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                 println!("  track extend [--minutes <mins>]");
                 println!("  done <id>");
                 println!("  /exit, /quit - Exit");
+                println!();
+                println!("Path examples (with tab completion):");
+                println!("  add \"Write report\" Work/Today");
+                println!("  subtask \"Research\" Work/Today/Write report");
+                println!("  add \"Sub-subtask\" Work/Today/Write report/Research");
                 return Err("help_shown".into());
             }
             _ => return Err(format!("Unknown slash command: {}", args[0]).into()),
         }
     }
-    
+
     match args[0] {
         "folder" => {
             if args.len() < 2 {
@@ -372,38 +419,44 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                     if args.len() < 3 {
                         return Err("Missing folder name".into());
                     }
-                    Ok(Commands::Folder { 
-                        action: FolderCmd::Add { name: args[2].to_string() } 
+                    Ok(Commands::Folder {
+                        action: FolderCmd::Add {
+                            name: args[2].to_string(),
+                        },
                     })
                 }
-                "list" => {
-                    Ok(Commands::Folder { action: FolderCmd::List })
-                }
+                "list" => Ok(Commands::Folder {
+                    action: FolderCmd::List,
+                }),
                 "lists" => {
                     if args.len() < 3 {
                         return Err("Missing lists subcommand".into());
                     }
                     match args[2] {
                         "add" => {
-                            let folder = args.iter().position(|&x| x == "--folder")
+                            let folder = args
+                                .iter()
+                                .position(|&x| x == "--folder")
                                 .and_then(|i| args.get(i + 1))
                                 .ok_or("Missing --folder argument")?;
                             let name = args.last().ok_or("Missing list name")?;
                             Ok(Commands::Folder {
-                                action: FolderCmd::Lists(ListCmd::Add { 
-                                    folder: folder.to_string(), 
-                                    name: name.to_string() 
-                                })
+                                action: FolderCmd::Lists(ListCmd::Add {
+                                    folder: folder.to_string(),
+                                    name: name.to_string(),
+                                }),
                             })
                         }
                         "list" => {
-                            let folder = args.iter().position(|&x| x == "--folder")
+                            let folder = args
+                                .iter()
+                                .position(|&x| x == "--folder")
                                 .and_then(|i| args.get(i + 1))
                                 .ok_or("Missing --folder argument")?;
                             Ok(Commands::Folder {
-                                action: FolderCmd::Lists(ListCmd::List { 
-                                    folder: folder.to_string() 
-                                })
+                                action: FolderCmd::Lists(ListCmd::List {
+                                    folder: folder.to_string(),
+                                }),
                             })
                         }
                         _ => Err("Unknown lists subcommand".into()),
@@ -422,7 +475,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                     let mut task = None;
                     let mut duration = None;
                     let mut mode = None;
-                    
+
                     let mut i = 2;
                     while i < args.len() {
                         match args[i] {
@@ -461,13 +514,22 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                             _ => i += 1,
                         }
                     }
-                    
-                    Ok(Commands::Track { 
-                        action: TrackCmd::Start { kind, task, duration, mode } 
+
+                    Ok(Commands::Track {
+                        action: TrackCmd::Start {
+                            kind,
+                            task,
+                            duration,
+                            mode,
+                        },
                     })
                 }
-                "stop" => Ok(Commands::Track { action: TrackCmd::Stop }),
-                "current" => Ok(Commands::Track { action: TrackCmd::Current }),
+                "stop" => Ok(Commands::Track {
+                    action: TrackCmd::Stop,
+                }),
+                "current" => Ok(Commands::Track {
+                    action: TrackCmd::Current,
+                }),
                 "extend" => {
                     let mut minutes = None;
                     if let Some(pos) = args.iter().position(|&x| x == "--minutes" || x == "-m") {
@@ -475,8 +537,8 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                             minutes = args[pos + 1].parse().ok();
                         }
                     }
-                    Ok(Commands::Track { 
-                        action: TrackCmd::Extend { minutes } 
+                    Ok(Commands::Track {
+                        action: TrackCmd::Extend { minutes },
                     })
                 }
                 _ => Err("Unknown track subcommand".into()),
@@ -486,7 +548,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
             let mut folder = None;
             let mut list = None;
             let mut tree = false;
-            
+
             let mut i = 1;
             while i < args.len() {
                 match args[i] {
@@ -513,44 +575,65 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                     _ => i += 1,
                 }
             }
-            
+
             Ok(Commands::List { folder, list, tree })
         }
         "add" => {
             if args.len() < 2 {
                 return Err("Missing task title".into());
             }
+
+            let title = args[1].to_string();
+
+            // Check if using new path syntax (contains '/')
+            if args.len() == 3 && args[2].contains('/') {
+                return Ok(Commands::AddPath {
+                    title,
+                    path: args[2].to_string(),
+                });
+            }
+
+            // Fall back to old flag-based syntax
             let mut folder = None;
             let mut list = None;
-            
+
             let folder_pos = args.iter().position(|&x| x == "--folder");
             let list_pos = args.iter().position(|&x| x == "--list");
-            
+
             if let Some(pos) = folder_pos {
                 if pos + 1 < args.len() {
                     folder = Some(args[pos + 1].to_string());
                 }
             }
-            
+
             if let Some(pos) = list_pos {
                 if pos + 1 < args.len() {
                     list = Some(args[pos + 1].to_string());
                 }
             }
-            
-            let title = args[1].to_string();
-            
-            Ok(Commands::Add { 
+
+            Ok(Commands::Add {
                 title,
-                folder: folder.ok_or("Missing --folder argument")?,
-                list: list.ok_or("Missing --list argument")?,
+                folder: folder.ok_or("Missing --folder argument or path")?,
+                list: list.ok_or("Missing --list argument or path")?,
             })
         }
         "subtask" => {
             if args.len() < 2 {
                 return Err("Missing subtask title".into());
             }
+
             let title = args[1].to_string();
+
+            // Check if using new path syntax (contains '/')
+            if args.len() == 3 && args[2].contains('/') {
+                return Ok(Commands::SubtaskPath {
+                    title,
+                    path: args[2].to_string(),
+                });
+            }
+
+            // Fall back to old flag-based syntax
             let parent_pos = args.iter().position(|&x| x == "--parent");
             let parent = if let Some(pos) = parent_pos {
                 if pos + 1 < args.len() {
@@ -559,16 +642,18 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                     return Err("Missing --parent argument".into());
                 }
             } else {
-                return Err("Missing --parent argument".into());
+                return Err("Missing --parent argument or path".into());
             };
-            
+
             Ok(Commands::Subtask { title, parent })
         }
         "done" => {
             if args.len() < 2 {
                 return Err("Missing task ID".into());
             }
-            Ok(Commands::Done { id: args[1].to_string() })
+            Ok(Commands::Done {
+                id: args[1].to_string(),
+            })
         }
         _ => Err(format!("Unknown command: {}", args[0]).into()),
     }
@@ -596,21 +681,36 @@ fn execute_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> 
                         println!("{}  {}", list.id, list.name);
                     }
                 }
-            }
+            },
         },
-        Commands::Add { title, folder, list } => {
+        Commands::Add {
+            title,
+            folder,
+            list,
+        } => {
             workspace_storage::add_task(folder, list, title)?;
             println!("✅ Task saved!");
+        }
+        Commands::AddPath { title, path } => {
+            handle_add_with_path(title, path)?;
         }
         Commands::Subtask { title, parent } => {
             workspace_storage::add_subtask(parent, title)?;
             println!("✅ Subtask saved!");
         }
+        Commands::SubtaskPath { title, path } => {
+            handle_subtask_with_path(title, path)?;
+        }
         Commands::List { folder, list, tree } => {
             workspace_storage::list_tasks(folder, list, tree)?;
         }
         Commands::Track { action } => match action {
-            TrackCmd::Start { kind, task, duration, mode } => {
+            TrackCmd::Start {
+                kind,
+                task,
+                duration,
+                mode,
+            } => {
                 handle_track_start(kind, task, duration, mode)?;
             }
             TrackCmd::Stop => {
@@ -635,32 +735,103 @@ fn execute_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
+fn handle_add_with_path(title: String, path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    let workspace = workspace_storage::load()?;
+
+    if parsed_path.is_folder_only() {
+        return Err("Cannot add task to folder only - specify folder/list".into());
+    } else if parsed_path.is_list_level() {
+        // Adding task to folder/list
+        let (folder_id, list_id, _) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        workspace_storage::add_task(folder_id, list_id, title)?;
+        println!(
+            "✅ Task saved to {}/{}!",
+            parsed_path.folder,
+            parsed_path.list.as_ref().unwrap()
+        );
+    } else {
+        // Adding subtask to existing task at any level
+        let (_, _, parent_task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+        if let Some(parent_id) = parent_task_id {
+            workspace_storage::add_subtask(parent_id, title)?;
+            let path_display = if parsed_path.list.is_some() {
+                format!(
+                    "{}/{}/{}",
+                    parsed_path.folder,
+                    parsed_path.list.as_ref().unwrap(),
+                    parsed_path.tasks.join("/")
+                )
+            } else {
+                format!("{}/{}", parsed_path.folder, parsed_path.tasks.join("/"))
+            };
+            println!("✅ Subtask saved to {}!", path_display);
+        } else {
+            return Err("Could not resolve parent task ID".into());
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_subtask_with_path(title: String, path: String) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_hierarchical_path(&path)?;
+    let workspace = workspace_storage::load()?;
+
+    if !parsed_path.is_task_level() {
+        return Err("Cannot add subtask to folder or list - specify a task path".into());
+    }
+
+    // Adding subtask to existing task at any level
+    let (_, _, parent_task_id) = resolve_path_to_ids(&parsed_path, &workspace)?;
+    if let Some(parent_id) = parent_task_id {
+        workspace_storage::add_subtask(parent_id, title)?;
+        let path_display = if parsed_path.list.is_some() {
+            format!(
+                "{}/{}/{}",
+                parsed_path.folder,
+                parsed_path.list.as_ref().unwrap(),
+                parsed_path.tasks.join("/")
+            )
+        } else {
+            format!("{}/{}", parsed_path.folder, parsed_path.tasks.join("/"))
+        };
+        println!("✅ Subtask saved to {}!", path_display);
+    } else {
+        return Err("Could not resolve parent task ID".into());
+    }
+
+    Ok(())
+}
+
 fn run_interactive_mode() -> Result<(), Box<dyn std::error::Error>> {
-    let mut rl = DefaultEditor::new()?;
-    
+    let mut rl: Editor<completion::ClaraHelper, _> = Editor::new()?;
+    let helper = completion::ClaraHelper::new();
+    rl.set_helper(Some(helper));
+
     println!("🎯 Clara Interactive Mode");
     println!("Type '/help' for commands, '/exit' to quit");
     println!();
-    
+
     loop {
         // Check for alerts before showing prompt
         if let Err(e) = alert::check_active_session() {
             eprintln!("Alert check error: {}", e);
         }
-        
+
         // Create prompt with status
         let status = get_status_line();
         let prompt = format!("clara [{}]> ", status);
-        
+
         let readline = rl.readline(&prompt);
         match readline {
             Ok(line) => {
                 if line.trim().is_empty() {
                     continue;
                 }
-                
+
                 rl.add_history_entry(line.as_str())?;
-                
+
                 match parse_command_line(&line) {
                     Ok(command) => {
                         if let Err(e) = execute_command(command) {
@@ -694,7 +865,7 @@ fn run_interactive_mode() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     Ok(())
 }
 
