@@ -80,7 +80,7 @@ fn extract_path_from_command_with_position(line: &str) -> Option<(String, usize)
         "folder" => {
             if parsed_args.len() >= 2 {
                 match parsed_args[1].as_str() {
-                    "delete" | "update" => {
+                    "create" | "delete" | "update" => {
                         if parsed_args.len() >= 3 {
                             let folder_name = &parsed_args[2];
                             let start_pos = find_quoted_arg_start_position(line, 2);
@@ -97,13 +97,13 @@ fn extract_path_from_command_with_position(line: &str) -> Option<(String, usize)
         "list" => {
             if parsed_args.len() >= 2 {
                 match parsed_args[1].as_str() {
-                    "add" => {
+                    "create" => {
                         if parsed_args.len() >= 4 {
                             let folder_name = &parsed_args[3];
                             let start_pos = find_quoted_arg_start_position(line, 3);
                             return Some((folder_name.clone(), start_pos));
                         } else if parsed_args.len() == 3 {
-                            // User typed: list add <name>
+                            // User typed: list create <name>
                             return Some(("".to_string(), line.len()));
                         }
                     }
@@ -136,7 +136,7 @@ fn extract_path_from_command_with_position(line: &str) -> Option<(String, usize)
         "task" => {
             if parsed_args.len() >= 2 {
                 match parsed_args[1].as_str() {
-                    "add" => {
+                    "create" => {
                         if parsed_args.len() >= 4 {
                             let path = &parsed_args[3];
                             if path.contains('/') {
@@ -144,7 +144,7 @@ fn extract_path_from_command_with_position(line: &str) -> Option<(String, usize)
                                 return Some((path.clone(), start_pos));
                             }
                         } else if parsed_args.len() == 3 {
-                            // User typed: task add <title>
+                            // User typed: task create <title>
                             return Some(("".to_string(), line.len()));
                         }
                     }
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn test_extract_path_from_new_list_commands() {
-        let result = extract_path_from_command("list add Today Work");
+        let result = extract_path_from_command("list create Today Work");
         assert_eq!(result, Some("Work".to_string()));
         
         let result = extract_path_from_command("list list Work");
@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn test_extract_path_from_new_task_commands() {
-        let result = extract_path_from_command("task add \"New task\" Work/Today");
+        let result = extract_path_from_command("task create \"New task\" Work/Today");
         assert_eq!(result, Some("Work/Today".to_string()));
         
         let result = extract_path_from_command("task list Work/Today");

@@ -71,7 +71,7 @@ enum Commands {
 
 #[derive(Debug)]
 enum FolderAction {
-    Add { name: String },
+    Create { name: String },
     List,
     Delete { path: String },
     Update { path: String },
@@ -79,7 +79,7 @@ enum FolderAction {
 
 #[derive(Debug)]
 enum ListAction {
-    Add { name: String, folder_path: String },
+    Create { name: String, folder_path: String },
     List { folder_path: String },
     Delete { path: String },
     Update { path: String },
@@ -87,7 +87,7 @@ enum ListAction {
 
 #[derive(Debug)]
 enum TaskAction {
-    Add { title: String, list_path: String },
+    Create { title: String, list_path: String },
     List { list_path: String, tree: bool },
     Delete { path: String },
     Update { path: String },
@@ -414,19 +414,19 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                 println!("Clara Commands (noun + verb pattern with path completion):");
                 println!();
                 println!("📁 FOLDER COMMANDS:");
-                println!("  folder add <name>");
+                println!("  folder create <name>");
                 println!("  folder list");
                 println!("  folder delete <name>");
                 println!("  folder update <name>");
                 println!();
                 println!("📋 LIST COMMANDS:");
-                println!("  list add <name> <folder_name>");
+                println!("  list create <name> <folder_name>");
                 println!("  list list <folder_name>");
                 println!("  list delete <folder_name/list_name>");
                 println!("  list update <folder_name/list_name>");
                 println!();
                 println!("✅ TASK COMMANDS:");
-                println!("  task add <title> <folder_name/list_name>");
+                println!("  task create <title> <folder_name/list_name>");
                 println!("  task list <folder_name/list_name> [--tree]");
                 println!("  task delete <folder_name/list_name/task_path>");
                 println!("  task update <folder_name/list_name/task_path>");
@@ -441,10 +441,10 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                 println!("  track extend [--minutes <mins>]");
                 println!();
                 println!("💡 EXAMPLES (all support tab completion):");
-                println!("  folder add Work");
-                println!("  list add Today Work");
-                println!("  task add \"Write report\" Work/Today");
-                println!("  task add \"Research\" Work/Today/Write report  # Creates subtask");
+                println!("  folder create Work");
+                println!("  list create Today Work");
+                println!("  task create \"Write report\" Work/Today");
+                println!("  task create \"Research\" Work/Today/Write report  # Creates subtask");
                 println!("  task delete Work/Today/Write report");
                 println!("  task done Work/Today/Write report/Research");
                 println!();
@@ -461,15 +461,15 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
     match args[0] {
         "folder" => {
             if args.len() < 2 {
-                return Err("Missing folder action (add, list, delete, update)".into());
+                return Err("Missing folder action (create, list, delete, update)".into());
             }
             match args[1] {
-                "add" => {
+                "create" => {
                     if args.len() < 3 {
                         return Err("Missing folder name".into());
                     }
                     Ok(Commands::Folder {
-                        action: FolderAction::Add {
+                        action: FolderAction::Create {
                             name: args[2].to_string(),
                         },
                     })
@@ -497,19 +497,19 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                         },
                     })
                 }
-                _ => Err("Unknown folder action. Use: add, list, delete, update".into()),
+                _ => Err("Unknown folder action. Use: create, list, delete, update".into()),
             }
         }
         "list" => {
             // Check if this is the new noun + verb pattern by looking at the second argument
             if args.len() >= 2 {
                 match args[1] {
-                    "add" => {
+                    "create" => {
                         if args.len() < 4 {
-                            return Err("Usage: list add <name> <folder_name>".into());
+                            return Err("Usage: list create <name> <folder_name>".into());
                         }
                         return Ok(Commands::List {
-                            action: ListAction::Add {
+                            action: ListAction::Create {
                                 name: args[2].to_string(),
                                 folder_path: args[3].to_string(),
                             },
@@ -587,15 +587,15 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
         }
         "task" => {
             if args.len() < 2 {
-                return Err("Missing task action (add, list, delete, update, done)".into());
+                return Err("Missing task action (create, list, delete, update, done)".into());
             }
             match args[1] {
-                "add" => {
+                "create" => {
                     if args.len() < 4 {
-                        return Err("Usage: task add <title> <folder_name/list_name>".into());
+                        return Err("Usage: task create <title> <folder_name/list_name>".into());
                     }
                     Ok(Commands::Task {
-                        action: TaskAction::Add {
+                        action: TaskAction::Create {
                             title: args[2].to_string(),
                             list_path: args[3].to_string(),
                         },
@@ -643,7 +643,7 @@ fn parse_command_line(input: &str) -> Result<Commands, Box<dyn std::error::Error
                         },
                     })
                 }
-                _ => Err("Unknown task action. Use: add, list, delete, update, done".into()),
+                _ => Err("Unknown task action. Use: create, list, delete, update, done".into()),
             }
         }
         "track" => {
@@ -839,7 +839,7 @@ fn execute_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> 
     match command {
         // New noun + verb commands
         Commands::Folder { action } => match action {
-            FolderAction::Add { name } => {
+            FolderAction::Create { name } => {
                 workspace_storage::add_folder(name.clone())?;
                 println!("📁 Created folder '{}'!", name);
             }
@@ -862,8 +862,8 @@ fn execute_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> 
             }
         },
         Commands::List { action } => match action {
-            ListAction::Add { name, folder_path } => {
-                handle_list_add(name, folder_path)?;
+            ListAction::Create { name, folder_path } => {
+                handle_list_create(name, folder_path)?;
             }
             ListAction::List { folder_path } => {
                 handle_list_list(folder_path)?;
@@ -876,8 +876,8 @@ fn execute_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> 
             }
         },
         Commands::Task { action } => match action {
-            TaskAction::Add { title, list_path } => {
-                handle_task_add(title, list_path)?;
+            TaskAction::Create { title, list_path } => {
+                handle_task_create(title, list_path)?;
             }
             TaskAction::List { list_path, tree } => {
                 handle_task_list(list_path, tree)?;
@@ -1068,7 +1068,7 @@ fn handle_folder_update(name: String) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
-fn handle_list_add(name: String, folder_path: String) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_list_create(name: String, folder_path: String) -> Result<(), Box<dyn std::error::Error>> {
     let workspace = workspace_storage::load()?;
     let folder = workspace
         .folders
@@ -1135,7 +1135,7 @@ fn handle_list_update(path: String) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn handle_task_add(title: String, list_path: String) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_task_create(title: String, list_path: String) -> Result<(), Box<dyn std::error::Error>> {
     let parsed_path = parse_hierarchical_path(&list_path)?;
     
     if parsed_path.is_list_level() {
