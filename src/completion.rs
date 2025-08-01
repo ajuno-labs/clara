@@ -32,7 +32,6 @@ impl Completer for ClaraHelper {
     ) -> Result<(usize, Vec<Pair>), ReadlineError> {
         let line_up_to_cursor = &line[..pos];
 
-        // Try to extract the path from common commands
         if let Some((path, start_pos)) = extract_path_from_command_with_position(line_up_to_cursor)
         {
             if let Ok(workspace) = workspace_storage::load() {
@@ -176,74 +175,6 @@ fn extract_path_from_command_with_position(line: &str) -> Option<(String, usize)
                 }
             }
         }
-        
-        // Legacy commands
-        "add" => {
-            // add "task title" folder/list/path
-            if parsed_args.len() >= 3 {
-                let path = &parsed_args[2];
-                let start_pos = find_quoted_arg_start_position(line, 2);
-                return Some((path.clone(), start_pos));
-            } else if parsed_args.len() == 2 {
-                // User typed: add "title" 
-                // Show all available folders to start the path
-                return Some(("".to_string(), line.len()));
-            }
-        }
-        "subtask" => {
-            // subtask "title" folder/list/task/path
-            if parsed_args.len() >= 3 {
-                let path = &parsed_args[2];
-                let start_pos = find_quoted_arg_start_position(line, 2);
-                return Some((path.clone(), start_pos));
-            } else if parsed_args.len() == 2 {
-                // User typed: subtask "title"
-                // Show all available folders to start the path
-                return Some(("".to_string(), line.len()));
-            }
-        }
-        "done" => {
-            // done folder/list/task/path
-            if parsed_args.len() >= 2 {
-                let path = &parsed_args[1];
-                let start_pos = find_quoted_arg_start_position(line, 1);
-                return Some((path.clone(), start_pos));
-            } else if parsed_args.len() == 1 {
-                // User typed: done
-                // Show all available folders to start the path
-                return Some(("".to_string(), line.len()));
-            }
-        }
-        "delete" => {
-            // delete folder/list/task/path
-            if parsed_args.len() >= 2 {
-                let path = &parsed_args[1];
-                // Only provide path completion if the argument contains '/'
-                if path.contains('/') {
-                    let start_pos = find_quoted_arg_start_position(line, 1);
-                    return Some((path.clone(), start_pos));
-                }
-            } else if parsed_args.len() == 1 {
-                // User typed: delete
-                // Show all available folders to start the path
-                return Some(("".to_string(), line.len()));
-            }
-        }
-        "update" => {
-            // update folder/list/task/path
-            if parsed_args.len() >= 2 {
-                let path = &parsed_args[1];
-                // Only provide path completion if the argument contains '/'
-                if path.contains('/') {
-                    let start_pos = find_quoted_arg_start_position(line, 1);
-                    return Some((path.clone(), start_pos));
-                }
-            } else if parsed_args.len() == 1 {
-                // User typed: update
-                // Show all available folders to start the path
-                return Some(("".to_string(), line.len()));
-            }
-        }
         "track" => {
             // track start --task folder/list/task/path
             if let Some(task_idx) = parsed_args.iter().position(|x| x == "--task") {
@@ -359,17 +290,6 @@ fn find_path_start_position(line: &str, path: &str) -> usize {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_extract_path_from_add_command() {
-        let result = extract_path_from_command("add \"New task\" Work/Today");
-        assert_eq!(result, Some("Work/Today".to_string()));
-    }
-
-    #[test]
-    fn test_extract_path_from_subtask_command() {
-        let result = extract_path_from_command("subtask \"Sub item\" \"Work/Today/Main task\"");
-        assert_eq!(result, Some("Work/Today/Main task".to_string()));
-    }
 
     #[test]
     fn test_extract_path_from_track_command() {
@@ -377,31 +297,7 @@ mod tests {
         assert_eq!(result, Some("Work/Today/Focus session".to_string()));
     }
 
-    #[test]
-    fn test_extract_path_from_done_command() {
-        let result = extract_path_from_command("done \"Work/Today/Completed task\"");
-        assert_eq!(result, Some("Work/Today/Completed task".to_string()));
-    }
 
-    #[test]
-    fn test_extract_path_from_delete_command() {
-        let result = extract_path_from_command("delete Work/Today/Task");
-        assert_eq!(result, Some("Work/Today/Task".to_string()));
-        
-        // Should not provide completion for ID-based delete
-        let result = extract_path_from_command("delete T123");
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_extract_path_from_update_command() {
-        let result = extract_path_from_command("update Work/Today/Task");
-        assert_eq!(result, Some("Work/Today/Task".to_string()));
-        
-        // Should not provide completion for ID-based update
-        let result = extract_path_from_command("update T123");
-        assert_eq!(result, None);
-    }
 
     #[test]
     fn test_extract_path_from_new_folder_commands() {
