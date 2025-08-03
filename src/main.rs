@@ -1,14 +1,12 @@
 mod cli;
+mod repl; 
 mod task;
 
-use clap::Parser;
-use cli::{execute_command, Cli};
+use repl::start_repl;
 
 fn main() {
-    let cli = Cli::parse();
-    
-    if let Err(e) = execute_command(cli.command) {
-        eprintln!("Error: {}", e);
+    if let Err(e) = start_repl() {
+        eprintln!("Error starting REPL: {}", e);
         std::process::exit(1);
     }
 }

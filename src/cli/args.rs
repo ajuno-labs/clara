@@ -1,15 +1,16 @@
 use clap::{Parser, Subcommand};
 
-#[derive(Parser)]
-#[command(name = "clara")]
-#[command(about = "A simple task management CLI")]
-#[command(version)]
+#[derive(Parser, Debug)]
+#[command(
+    name = env!("CARGO_PKG_NAME"),
+    version = env!("CARGO_PKG_VERSION"),
+)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub cmd: Option<Commands>,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Commands {
     Add,
     List,

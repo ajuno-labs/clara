@@ -14,7 +14,7 @@ pub fn add_task() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(&temp_file, toml_content)?;
     
     // Get editor from environment variable, default to nano
-    let editor = env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+    let editor = env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
     
     // Open editor
     let status = Command::new(&editor)
