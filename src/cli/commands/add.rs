@@ -1,9 +1,7 @@
 use crate::cli::metadata::parse_slash_metadata;
 use crate::repl::command_handler::ReplContext;
 use crate::task::{TaskDraft, TaskStore};
-use std::env;
-use std::fs;
-use std::process::Command;
+use crate::editor::edit_toml_content;
 
 pub fn add_task(parent_id: Option<u32>, text: Option<String>, context: &ReplContext) -> Result<(), Box<dyn std::error::Error>> {
     // Check if we have slash-style metadata or should use TOML editor
@@ -73,31 +71,14 @@ fn add_task_with_editor(parent_id: Option<u32>, context: &ReplContext) -> Result
         }
     }
 
-    // Create a temporary file with TOML template
-    let temp_dir = env::temp_dir();
-    let temp_file = temp_dir.join("clara_task.toml");
-    
-    // Create and write TOML template
+    // Create TOML template
     let mut template = TaskDraft::new();
     template.parent_id = parent_id;
     template.project_id = context.current_project.as_ref().map(|p| p.id);
     let toml_content = template.to_toml()?;
-    fs::write(&temp_file, toml_content)?;
     
-    // Get editor from environment variable, default to nano
-    let editor = env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
-    
-    // Open editor
-    let status = Command::new(&editor)
-        .arg(&temp_file)
-        .status()?;
-    
-    if !status.success() {
-        return Err("Editor exited with non-zero status".into());
-    }
-    
-    // Read the edited content
-    let edited_content = fs::read_to_string(&temp_file)?;
+    // Edit content using shared editor utility
+    let edited_content = edit_toml_content(&toml_content)?;
     
     // Parse TOML and convert to task
     let task_draft = TaskDraft::from_toml(&edited_content)
@@ -109,9 +90,6 @@ fn add_task_with_editor(parent_id: Option<u32>, context: &ReplContext) -> Result
     // Save task to database
     let store = TaskStore::new()?;
     store.insert(&task)?;
-    
-    // Clean up temp file
-    let _ = fs::remove_file(&temp_file);
     
     let project_info = context.current_project.as_ref()
         .map(|p| format!(" in project '{}'", p.name))

@@ -230,34 +230,18 @@ fn handle_project_command(input: &str, _context: &ReplContext) -> std::result::R
         }
         "add" => {
             use crate::project::{ProjectDraft, ProjectStore};
-            use std::env;
-            use std::fs;
-            use std::process::Command;
+            use crate::editor::edit_toml_content;
             
-            // Create a temporary file with TOML template
-            let temp_dir = env::temp_dir();
-            let temp_file = temp_dir.join("clara_project.toml");
-            
-            // Create and write TOML template
+            // Create TOML template and edit using shared editor utility
             let template = ProjectDraft::new();
             let toml_content = template.to_toml()?;
-            fs::write(&temp_file, toml_content)?;
-            
-            // Get editor from environment variable, default to vim
-            let editor = env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
-            
-            // Open editor
-            let status = Command::new(&editor)
-                .arg(&temp_file)
-                .status()?;
-            
-            if !status.success() {
-                println!("❌ Editor exited with non-zero status");
-                return Ok(true);
-            }
-            
-            // Read the edited content
-            let edited_content = fs::read_to_string(&temp_file)?;
+            let edited_content = match edit_toml_content(&toml_content) {
+                Ok(content) => content,
+                Err(_) => {
+                    println!("❌ Editor exited with non-zero status");
+                    return Ok(true);
+                }
+            };
             
             // Parse TOML and convert to project
             let project_draft = ProjectDraft::from_toml(&edited_content)
@@ -280,9 +264,6 @@ fn handle_project_command(input: &str, _context: &ReplContext) -> std::result::R
                     }
                 }
             }
-            
-            // Clean up temp file
-            let _ = fs::remove_file(&temp_file);
         }
         "help" | "--help" => {
             print_project_help();
