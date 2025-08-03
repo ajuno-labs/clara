@@ -3,13 +3,23 @@ use std::env;
 use std::fs;
 use std::process::Command;
 
-pub fn add_task() -> Result<(), Box<dyn std::error::Error>> {
+pub fn add_task(parent_id: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate parent exists if provided
+    if let Some(parent_id) = parent_id {
+        let store = TaskStore::new()?;
+        match store.find_by_id(parent_id)? {
+            Some(_) => {},
+            None => return Err(format!("Parent task with ID {} not found", parent_id).into()),
+        }
+    }
+
     // Create a temporary file with TOML template
     let temp_dir = env::temp_dir();
     let temp_file = temp_dir.join("clara_task.toml");
     
     // Create and write TOML template
-    let template = TaskDraft::new();
+    let mut template = TaskDraft::new();
+    template.parent_id = parent_id;
     let toml_content = template.to_toml()?;
     fs::write(&temp_file, toml_content)?;
     
@@ -42,7 +52,10 @@ pub fn add_task() -> Result<(), Box<dyn std::error::Error>> {
     // Clean up temp file
     let _ = fs::remove_file(&temp_file);
     
-    println!("✅ Task added: '{}'", task.title);
+    match parent_id {
+        Some(parent_id) => println!("✅ Subtask added to parent #{}: '{}'", parent_id, task.title),
+        None => println!("✅ Task added: '{}'", task.title),
+    }
     
     Ok(())
 }

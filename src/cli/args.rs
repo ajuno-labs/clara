@@ -12,7 +12,10 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    Add,
+    Add {
+        #[arg(long, help = "ID of the parent task to create a subtask under")]
+        parent: Option<u32>,
+    },
     List,
     Edit {
         #[arg(help = "ID of the task to edit")]

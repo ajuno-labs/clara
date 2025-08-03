@@ -98,6 +98,7 @@ pub struct Task {
     pub created_at: i64,
     pub updated_at: i64,
     pub completed_at: Option<i64>,
+    pub parent_id: Option<u32>,
     pub extras: Option<Value>,
 }
 
@@ -108,6 +109,10 @@ impl fmt::Display for Task {
             "Task ID: {}, Title: {}, Status: {}, Priority: {}, Created: {}",
             self.id, self.title, self.status, self.priority, self.created_at_datetime()
         )?;
+
+        if let Some(parent_id) = self.parent_id {
+            write!(f, ", Parent: #{}", parent_id)?;
+        }
 
         if !self.tags.is_empty() {
             write!(f, ", Tags: [{}]", self.tags.join(", "))?;
@@ -128,6 +133,7 @@ pub struct TaskDraft {
     pub tags: Vec<String>,
     pub priority: String,
     pub due_date: Option<i64>,
+    pub parent_id: Option<u32>,
     pub extras: Option<Value>,
 }
 
@@ -139,6 +145,7 @@ impl TaskDraft {
             tags: Vec::new(),
             priority: String::from("medium"),
             due_date: None,
+            parent_id: None,
             extras: None,
         }
     }
@@ -169,6 +176,7 @@ impl TaskDraft {
             created_at: now,
             updated_at: now,
             completed_at: None,
+            parent_id: self.parent_id,
             extras: self.extras,
         })
     }
@@ -206,6 +214,7 @@ impl Task {
             tags: self.tags.clone(),
             priority: self.priority.to_string(),
             due_date: self.due_date,
+            parent_id: self.parent_id,
             extras: self.extras.clone(),
         }
     }

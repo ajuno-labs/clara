@@ -66,22 +66,24 @@ fn print_repl_help() {
     println!("  /quit  - Exit the REPL");
     println!();
     println!("Task commands:");
-    println!("  add           - Add a new task");
-    println!("  list          - List all tasks");
-    println!("  edit <id>     - Edit a task");
-    println!("  remove <id>   - Remove a task");
-    println!("  done <id>     - Mark a task as done");
+    println!("  add                  - Add a new task");
+    println!("  add --parent <id>    - Add a subtask under an existing task");
+    println!("  list                 - List all tasks in hierarchical tree structure");
+    println!("  edit <id>            - Edit a task");
+    println!("  remove <id>          - Remove a task");
+    println!("  done <id>            - Mark a task as done");
     println!();
     println!("Use any command followed by --help for detailed usage.");
 }
 
 fn print_task_help() {
     println!("Available task commands:");
-    println!("  add           - Add a new task");
-    println!("  list          - List all tasks");
-    println!("  edit <id>     - Edit a task");
-    println!("  remove <id>   - Remove a task");
-    println!("  done <id>     - Mark a task as done");
+    println!("  add                  - Add a new task");
+    println!("  add --parent <id>    - Add a subtask under an existing task");
+    println!("  list                 - List all tasks in hierarchical tree structure");
+    println!("  edit <id>            - Edit a task");
+    println!("  remove <id>          - Remove a task");
+    println!("  done <id>            - Mark a task as done");
     println!();
     println!("Use any command followed by --help for detailed usage.");
 }

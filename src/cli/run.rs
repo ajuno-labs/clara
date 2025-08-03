@@ -3,7 +3,7 @@ use crate::cli::commands::{add_task, done_task, edit_task, list_tasks, remove_ta
 
 pub fn execute_command(cmd: Commands) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        Commands::Add => add_task(),
+        Commands::Add { parent } => add_task(parent),
         Commands::List => list_tasks(),
         Commands::Edit { id } => edit_task(id),
         Commands::Remove { id } => remove_task(id),
