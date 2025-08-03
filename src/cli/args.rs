@@ -19,8 +19,8 @@ pub enum Commands {
         text: Option<String>,
     },
     List,
-    Edit {
-        #[arg(help = "ID of the task to edit")]
+    Update {
+        #[arg(help = "ID of the task to update")]
         id: u32,
         #[arg(help = "Slash-style metadata updates: '/p high /tag work,urgent'")]
         text: Option<String>,

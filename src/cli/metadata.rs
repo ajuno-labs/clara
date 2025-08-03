@@ -212,8 +212,8 @@ mod tests {
     }
 
     #[test]
-    fn test_edit_metadata_only() {
-        // Test parsing metadata-only for edit command (starts with /)
+    fn test_update_metadata_only() {
+        // Test parsing metadata-only for update command (starts with /)
         let dummy_input = format!("DUMMY_TITLE {}", "/p urgent /tag critical");
         let metadata = parse_slash_metadata(&dummy_input).unwrap();
         
@@ -223,8 +223,8 @@ mod tests {
     }
 
     #[test]
-    fn test_edit_title_and_metadata() {
-        // Test parsing title + metadata for edit command
+    fn test_update_title_and_metadata() {
+        // Test parsing title + metadata for update command
         let metadata = parse_slash_metadata("New task title /p high /tag updated").unwrap();
         
         assert_eq!(metadata.title, "New task title");

@@ -140,13 +140,13 @@ fn handle_task_command(input: &str, context: &ReplContext) -> std::result::Resul
         }
     }
     
-    // Special handling for 'edit' command with slash metadata
-    if trimmed_input.starts_with("edit ") && !trimmed_input.contains("--") {
-        // For edit with slash metadata, we need to be more careful about parsing
+    // Special handling for 'update' command with slash metadata
+    if trimmed_input.starts_with("update ") && !trimmed_input.contains("--") {
+        // For update with slash metadata, we need to be more careful about parsing
         // Expected formats:
-        // 1. edit 5 /p urgent           (metadata-only)
-        // 2. edit 5 "New title" /p urgent  (title + metadata, quoted)
-        // 3. edit 5 SingleWord /p urgent   (single word title + metadata)
+        // 1. update 5 /p urgent           (metadata-only)
+        // 2. update 5 "New title" /p urgent  (title + metadata, quoted)
+        // 3. update 5 SingleWord /p urgent   (single word title + metadata)
         
         // Use shell_words to properly handle quoted arguments
         match shell_words::split(trimmed_input) {
@@ -159,7 +159,7 @@ fn handle_task_command(input: &str, context: &ReplContext) -> std::result::Resul
                         let text = remaining_args.join(" ");
                         
                         use crate::cli::args::Commands;
-                        let cmd = Commands::Edit {
+                        let cmd = Commands::Update {
                             id,
                             text: Some(text)
                         };
@@ -309,8 +309,8 @@ fn print_task_commands() {
     println!("  add title /p high /tag work - Add with slash-style metadata");
     println!("  add --parent <id>           - Add a subtask under an existing task");
     println!("  list                        - List all tasks in hierarchical tree structure");
-    println!("  edit <id>                   - Edit a task (opens editor)");
-    println!("  edit <id> /p high /tag work - Edit with slash-style metadata");
+    println!("  update <id>                 - Update a task (opens editor)");
+    println!("  update <id> /p high /tag work - Update with slash-style metadata");
     println!("  remove <id>                 - Remove a task");
     println!("  done <id>                   - Mark a task as done");
     println!();
@@ -326,7 +326,7 @@ fn print_project_commands() {
     println!("Project commands:");
     println!("  list                 - List all projects");
     println!("  add                  - Add a new project");
-    println!("  edit <id>            - Edit a project");
+    println!("  update <id>          - Update a project");
     println!("  remove <id>          - Remove a project");
 }
 

@@ -3,16 +3,16 @@ use crate::task::{TaskDraft, TaskStore};
 use chrono::Local;
 use crate::editor::edit_toml_content;
 
-pub fn edit_task(id: u32, text: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn update_task(id: u32, text: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     // Check if we have slash-style metadata or should use TOML editor
     if let Some(text_input) = text {
-        return edit_task_with_metadata(id, &text_input);
+        return update_task_with_metadata(id, &text_input);
     } else {
-        return edit_task_with_editor(id);
+        return update_task_with_editor(id);
     }
 }
 
-fn edit_task_with_metadata(id: u32, text: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn update_task_with_metadata(id: u32, text: &str) -> Result<(), Box<dyn std::error::Error>> {
     let store = TaskStore::new()?;
     
     // Find the task
@@ -24,7 +24,7 @@ fn edit_task_with_metadata(id: u32, text: &str) -> Result<(), Box<dyn std::error
         }
     };
     
-    // Parse slash metadata for edit command
+    // Parse slash metadata for update command
     let metadata = if text.starts_with('/') {
         // Metadata-only update: /p high /tag work
         // Prepend dummy title for parsing, then ignore the title
@@ -36,7 +36,7 @@ fn edit_task_with_metadata(id: u32, text: &str) -> Result<(), Box<dyn std::error
     };
     
     // Update task fields based on metadata
-    // For edit, only update title if it's not the dummy and if the input doesn't start with /
+    // For update, only update title if it's not the dummy and if the input doesn't start with /
     if !text.starts_with('/') && !metadata.title.is_empty() {
         task.title = metadata.title;
     }
@@ -75,7 +75,7 @@ fn edit_task_with_metadata(id: u32, text: &str) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-fn edit_task_with_editor(id: u32) -> Result<(), Box<dyn std::error::Error>> {
+fn update_task_with_editor(id: u32) -> Result<(), Box<dyn std::error::Error>> {
     let store = TaskStore::new()?;
     
     // Find the task
