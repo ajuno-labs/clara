@@ -23,7 +23,7 @@ impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Status::Todo => write!(f, "todo"),
-            Status::InProgress => write!(f, "doing"),
+            Status::InProgress => write!(f, "in_progress"),
             Status::Done => write!(f, "done"),
         }
     }
@@ -33,7 +33,7 @@ impl Status {
     pub fn from_string(s: &str) -> Self {
         match s {
             "todo" => Status::Todo,
-            "doing" => Status::InProgress,
+            "in_progress" => Status::InProgress,
             "done" => Status::Done,
             _ => Status::Todo,
         }
@@ -164,9 +164,9 @@ impl TaskDraft {
 
         let status = match self.status.to_lowercase().as_str() {
             "todo" => Status::Todo,
-            "doing" | "in_progress" => Status::InProgress,
+            "in_progress" => Status::InProgress,
             "done" => Status::Done,
-            _ => return Err("Invalid status. Use: todo, doing, or done".to_string()),
+            _ => return Err("Invalid status. Use: todo, in_progress, or done".to_string()),
         };
 
         let priority = Priority::from_string(&self.priority);
