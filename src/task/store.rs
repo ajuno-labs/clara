@@ -1,5 +1,4 @@
 use crate::task::model::{Status, Task};
-use chrono::{DateTime, Utc};
 use directories::ProjectDirs;
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
@@ -28,10 +27,16 @@ impl TaskStore {
     fn init_tables(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS tasks (
-                id          INTEGER PRIMARY KEY,
-                title       TEXT NOT NULL,
-                created_at  TEXT NOT NULL,
-                status      TEXT NOT NULL
+                id           INTEGER PRIMARY KEY,
+                title        TEXT NOT NULL,
+                created_at   INTEGER NOT NULL,
+                status       TEXT NOT NULL,
+                tags         TEXT NOT NULL DEFAULT '[]',
+                priority     TEXT NOT NULL DEFAULT 'medium',
+                due_date     INTEGER,
+                updated_at   INTEGER NOT NULL,
+                completed_at INTEGER,
+                extras       TEXT
             )",
             [],
         )?;
@@ -39,13 +44,25 @@ impl TaskStore {
     }
 
     pub fn insert(&self, task: &Task) -> Result<()> {
+        let tags_json = serde_json::to_string(&task.tags).unwrap_or_else(|_| "[]".to_string());
+        let extras_json = task
+            .extras
+            .as_ref()
+            .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "null".to_string()));
+
         self.conn.execute(
-            "INSERT INTO tasks (title, created_at, status)
-             VALUES (?1, ?2, ?3)",
+            "INSERT INTO tasks (title, created_at, status, tags, priority, due_date, updated_at, completed_at, extras)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 task.title,
-                task.created_at.to_rfc3339(),
-                task.status.to_string()
+                task.created_at,
+                task.status,
+                tags_json,
+                task.priority,
+                task.due_date,
+                task.updated_at,
+                task.completed_at,
+                extras_json
             ],
         )?;
         Ok(())
@@ -54,15 +71,24 @@ impl TaskStore {
     pub fn list(&self) -> Result<Vec<Task>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, created_at, status FROM tasks")?;
+            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, extras FROM tasks")?;
         let task_iter = stmt.query_map([], |row| {
+            let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let extras_json: Option<String> = row.get("extras")?;
+            let extras = extras_json.and_then(|s| serde_json::from_str(&s).ok());
+
             Ok(Task {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                created_at: DateTime::parse_from_rfc3339(row.get::<_, String>(2)?.as_str())
-                    .unwrap()
-                    .with_timezone(&Utc),
-                status: Status::from_string(&row.get::<_, String>(3)?),
+                id: row.get("id")?,
+                title: row.get("title")?,
+                created_at: row.get("created_at")?,
+                status: row.get("status")?,
+                tags,
+                priority: row.get("priority")?,
+                due_date: row.get("due_date")?,
+                updated_at: row.get("updated_at")?,
+                completed_at: row.get("completed_at")?,
+                extras,
             })
         })?;
 
@@ -76,7 +102,7 @@ impl TaskStore {
     pub fn update(&self, id: u32, status: Status) -> Result<()> {
         self.conn.execute(
             "UPDATE tasks SET status = ?1 WHERE id = ?2",
-            rusqlite::params![status.to_string(), id],
+            rusqlite::params![status, id],
         )?;
         Ok(())
     }
@@ -88,15 +114,24 @@ impl TaskStore {
     }
 
     pub fn find_by_id(&self, id: u32) -> Result<Option<Task>> {
-        let mut stmt = self.conn.prepare("SELECT id, title, created_at, status FROM tasks WHERE id = ?1")?;
+        let mut stmt = self.conn.prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, extras FROM tasks WHERE id = ?1")?;
         let mut task_iter = stmt.query_map([id], |row| {
+            let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let extras_json: Option<String> = row.get("extras")?;
+            let extras = extras_json.and_then(|s| serde_json::from_str(&s).ok());
+
             Ok(Task {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                created_at: DateTime::parse_from_rfc3339(row.get::<_, String>(2)?.as_str())
-                    .unwrap()
-                    .with_timezone(&Utc),
-                status: Status::from_string(&row.get::<_, String>(3)?),
+                id: row.get("id")?,
+                title: row.get("title")?,
+                created_at: row.get("created_at")?,
+                status: row.get("status")?,
+                tags,
+                priority: row.get("priority")?,
+                due_date: row.get("due_date")?,
+                updated_at: row.get("updated_at")?,
+                completed_at: row.get("completed_at")?,
+                extras,
             })
         })?;
 
@@ -109,7 +144,7 @@ impl TaskStore {
     pub fn update_task(&self, task: &Task) -> Result<()> {
         self.conn.execute(
             "UPDATE tasks SET title = ?1, status = ?2 WHERE id = ?3",
-            rusqlite::params![task.title, task.status.to_string(), task.id],
+            rusqlite::params![task.title, task.status, task.id],
         )?;
         Ok(())
     }
