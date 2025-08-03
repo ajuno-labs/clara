@@ -12,4 +12,17 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     Add,
+    List,
+    Edit {
+        #[arg(help = "ID of the task to edit")]
+        id: u32,
+    },
+    Remove {
+        #[arg(help = "ID of the task to remove")]
+        id: u32,
+    },
+    Done {
+        #[arg(help = "ID of the task to mark as done")]
+        id: u32,
+    },
 }

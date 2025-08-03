@@ -86,4 +86,31 @@ impl TaskStore {
             .execute("DELETE FROM tasks WHERE id = ?1", rusqlite::params![id])?;
         Ok(())
     }
+
+    pub fn find_by_id(&self, id: u32) -> Result<Option<Task>> {
+        let mut stmt = self.conn.prepare("SELECT id, title, created_at, status FROM tasks WHERE id = ?1")?;
+        let mut task_iter = stmt.query_map([id], |row| {
+            Ok(Task {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                created_at: DateTime::parse_from_rfc3339(row.get::<_, String>(2)?.as_str())
+                    .unwrap()
+                    .with_timezone(&Utc),
+                status: Status::from_string(&row.get::<_, String>(3)?),
+            })
+        })?;
+
+        match task_iter.next() {
+            Some(task) => Ok(Some(task?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn update_task(&self, task: &Task) -> Result<()> {
+        self.conn.execute(
+            "UPDATE tasks SET title = ?1, status = ?2 WHERE id = ?3",
+            rusqlite::params![task.title, task.status.to_string(), task.id],
+        )?;
+        Ok(())
+    }
 }

@@ -1,5 +1,6 @@
 pub mod args;
 pub mod commands;
+pub mod run;
 
 pub use args::Cli;
-pub use commands::execute_command;
+pub use run::execute_command;
