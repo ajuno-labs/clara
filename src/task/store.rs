@@ -37,8 +37,10 @@ impl TaskStore {
                 updated_at   INTEGER NOT NULL,
                 completed_at INTEGER,
                 parent_id    INTEGER,
+                project_id   INTEGER,
                 extras       TEXT,
-                FOREIGN KEY(parent_id) REFERENCES tasks(id)
+                FOREIGN KEY(parent_id) REFERENCES tasks(id),
+                FOREIGN KEY(project_id) REFERENCES projects(id)
             )",
             [],
         )?;
@@ -53,8 +55,8 @@ impl TaskStore {
             .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "null".to_string()));
 
         self.conn.execute(
-            "INSERT INTO tasks (title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, extras)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO tasks (title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, project_id, extras)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 task.title,
                 task.created_at,
@@ -65,6 +67,7 @@ impl TaskStore {
                 task.updated_at,
                 task.completed_at,
                 task.parent_id,
+                task.project_id,
                 extras_json
             ],
         )?;
@@ -74,7 +77,7 @@ impl TaskStore {
     pub fn list(&self) -> Result<Vec<Task>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, extras FROM tasks")?;
+            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, project_id, extras FROM tasks")?;
         let task_iter = stmt.query_map([], |row| {
             let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -92,6 +95,7 @@ impl TaskStore {
                 updated_at: row.get("updated_at")?,
                 completed_at: row.get("completed_at")?,
                 parent_id: row.get("parent_id")?,
+                project_id: row.get("project_id")?,
                 extras,
             })
         })?;
@@ -118,7 +122,7 @@ impl TaskStore {
     }
 
     pub fn find_by_id(&self, id: u32) -> Result<Option<Task>> {
-        let mut stmt = self.conn.prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, extras FROM tasks WHERE id = ?1")?;
+        let mut stmt = self.conn.prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, project_id, extras FROM tasks WHERE id = ?1")?;
         let mut task_iter = stmt.query_map([id], |row| {
             let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -136,6 +140,7 @@ impl TaskStore {
                 updated_at: row.get("updated_at")?,
                 completed_at: row.get("completed_at")?,
                 parent_id: row.get("parent_id")?,
+                project_id: row.get("project_id")?,
                 extras,
             })
         })?;
@@ -157,7 +162,7 @@ impl TaskStore {
     pub fn find_children(&self, parent_id: u32) -> Result<Vec<Task>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, extras FROM tasks WHERE parent_id = ?1")?;
+            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, project_id, extras FROM tasks WHERE parent_id = ?1")?;
         let task_iter = stmt.query_map([parent_id], |row| {
             let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -175,6 +180,7 @@ impl TaskStore {
                 updated_at: row.get("updated_at")?,
                 completed_at: row.get("completed_at")?,
                 parent_id: row.get("parent_id")?,
+                project_id: row.get("project_id")?,
                 extras,
             })
         })?;
@@ -189,7 +195,7 @@ impl TaskStore {
     pub fn find_root_tasks(&self) -> Result<Vec<Task>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, extras FROM tasks WHERE parent_id IS NULL")?;
+            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, project_id, extras FROM tasks WHERE parent_id IS NULL")?;
         let task_iter = stmt.query_map([], |row| {
             let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -207,6 +213,73 @@ impl TaskStore {
                 updated_at: row.get("updated_at")?,
                 completed_at: row.get("completed_at")?,
                 parent_id: row.get("parent_id")?,
+                project_id: row.get("project_id")?,
+                extras,
+            })
+        })?;
+
+        let mut tasks = Vec::new();
+        for task in task_iter {
+            tasks.push(task?);
+        }
+        Ok(tasks)
+    }
+
+    pub fn find_tasks_by_project(&self, project_id: u32) -> Result<Vec<Task>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, project_id, extras FROM tasks WHERE project_id = ?1")?;
+        let task_iter = stmt.query_map([project_id], |row| {
+            let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let extras_json: Option<String> = row.get("extras")?;
+            let extras = extras_json.and_then(|s| serde_json::from_str(&s).ok());
+
+            Ok(Task {
+                id: row.get("id")?,
+                title: row.get("title")?,
+                created_at: row.get("created_at")?,
+                status: row.get("status")?,
+                tags,
+                priority: row.get("priority")?,
+                due_date: row.get("due_date")?,
+                updated_at: row.get("updated_at")?,
+                completed_at: row.get("completed_at")?,
+                parent_id: row.get("parent_id")?,
+                project_id: row.get("project_id")?,
+                extras,
+            })
+        })?;
+
+        let mut tasks = Vec::new();
+        for task in task_iter {
+            tasks.push(task?);
+        }
+        Ok(tasks)
+    }
+
+    pub fn find_root_tasks_by_project(&self, project_id: u32) -> Result<Vec<Task>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, created_at, status, tags, priority, due_date, updated_at, completed_at, parent_id, project_id, extras FROM tasks WHERE project_id = ?1 AND parent_id IS NULL")?;
+        let task_iter = stmt.query_map([project_id], |row| {
+            let tags_json: String = row.get("tags").unwrap_or_else(|_| "[]".to_string());
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let extras_json: Option<String> = row.get("extras")?;
+            let extras = extras_json.and_then(|s| serde_json::from_str(&s).ok());
+
+            Ok(Task {
+                id: row.get("id")?,
+                title: row.get("title")?,
+                created_at: row.get("created_at")?,
+                status: row.get("status")?,
+                tags,
+                priority: row.get("priority")?,
+                due_date: row.get("due_date")?,
+                updated_at: row.get("updated_at")?,
+                completed_at: row.get("completed_at")?,
+                parent_id: row.get("parent_id")?,
+                project_id: row.get("project_id")?,
                 extras,
             })
         })?;

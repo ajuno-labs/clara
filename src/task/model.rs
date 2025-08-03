@@ -99,6 +99,7 @@ pub struct Task {
     pub updated_at: i64,
     pub completed_at: Option<i64>,
     pub parent_id: Option<u32>,
+    pub project_id: Option<u32>,
     pub extras: Option<Value>,
 }
 
@@ -112,6 +113,10 @@ impl fmt::Display for Task {
 
         if let Some(parent_id) = self.parent_id {
             write!(f, ", Parent: #{}", parent_id)?;
+        }
+
+        if let Some(project_id) = self.project_id {
+            write!(f, ", Project: #{}", project_id)?;
         }
 
         if !self.tags.is_empty() {
@@ -134,6 +139,7 @@ pub struct TaskDraft {
     pub priority: String,
     pub due_date: Option<i64>,
     pub parent_id: Option<u32>,
+    pub project_id: Option<u32>,
     pub extras: Option<Value>,
 }
 
@@ -146,6 +152,7 @@ impl TaskDraft {
             priority: String::from("medium"),
             due_date: None,
             parent_id: None,
+            project_id: None,
             extras: None,
         }
     }
@@ -177,6 +184,7 @@ impl TaskDraft {
             updated_at: now,
             completed_at: None,
             parent_id: self.parent_id,
+            project_id: self.project_id,
             extras: self.extras,
         })
     }
@@ -215,6 +223,7 @@ impl Task {
             priority: self.priority.to_string(),
             due_date: self.due_date,
             parent_id: self.parent_id,
+            project_id: self.project_id,
             extras: self.extras.clone(),
         }
     }

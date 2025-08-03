@@ -1,9 +1,10 @@
+use crate::repl::command_handler::ReplContext;
 use crate::task::{TaskDraft, TaskStore};
 use std::env;
 use std::fs;
 use std::process::Command;
 
-pub fn add_task(parent_id: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn add_task(parent_id: Option<u32>, context: &ReplContext) -> Result<(), Box<dyn std::error::Error>> {
     // Validate parent exists if provided
     if let Some(parent_id) = parent_id {
         let store = TaskStore::new()?;
@@ -20,6 +21,7 @@ pub fn add_task(parent_id: Option<u32>) -> Result<(), Box<dyn std::error::Error>
     // Create and write TOML template
     let mut template = TaskDraft::new();
     template.parent_id = parent_id;
+    template.project_id = context.current_project.as_ref().map(|p| p.id);
     let toml_content = template.to_toml()?;
     fs::write(&temp_file, toml_content)?;
     
@@ -52,9 +54,13 @@ pub fn add_task(parent_id: Option<u32>) -> Result<(), Box<dyn std::error::Error>
     // Clean up temp file
     let _ = fs::remove_file(&temp_file);
     
+    let project_info = context.current_project.as_ref()
+        .map(|p| format!(" in project '{}'", p.name))
+        .unwrap_or_default();
+    
     match parent_id {
-        Some(parent_id) => println!("✅ Subtask added to parent #{}: '{}'", parent_id, task.title),
-        None => println!("✅ Task added: '{}'", task.title),
+        Some(parent_id) => println!("✅ Subtask added to parent #{}{}: '{}'", parent_id, project_info, task.title),
+        None => println!("✅ Task added{}: '{}'", project_info, task.title),
     }
     
     Ok(())

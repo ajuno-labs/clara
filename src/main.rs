@@ -1,4 +1,5 @@
 mod cli;
+mod project;
 mod repl; 
 mod task;
 

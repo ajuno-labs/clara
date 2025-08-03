@@ -1,21 +1,23 @@
-use crate::repl::command_handler::handle_repl_command;
+use crate::repl::command_handler::{handle_repl_command, ReplContext};
 use rustyline::{DefaultEditor, Result};
 
 pub fn start_repl() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
+    let mut context = ReplContext::new();
 
     println!("🎯 Clara Task Manager REPL");
     println!("Type '/help' for available commands or '/quit' to exit.");
 
     let exit_reason = loop {
-        let readline = rl.readline("> ");
+        let prompt = context.get_prompt();
+        let readline = rl.readline(&prompt);
         match readline {
             Ok(line) => {
                 let line = line.trim();
                 if !line.is_empty() {
                     rl.add_history_entry(line)?;
 
-                    match handle_repl_command(line) {
+                    match handle_repl_command(line, &mut context) {
                         Ok(should_continue) => {
                             if !should_continue {
                                 break ExitReason::Command;
