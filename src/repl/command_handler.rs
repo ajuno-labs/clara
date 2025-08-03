@@ -231,6 +231,7 @@ fn handle_project_command(input: &str, _context: &ReplContext) -> std::result::R
         "add" => {
             use crate::project::{ProjectDraft, ProjectStore};
             use crate::editor::edit_toml_content;
+            use rusqlite::{Error as SqliteError, ErrorCode};
             
             // Create TOML template and edit using shared editor utility
             let template = ProjectDraft::new();
@@ -257,10 +258,15 @@ fn handle_project_command(input: &str, _context: &ReplContext) -> std::result::R
                     println!("✅ Project added: '{}'", project.name);
                 }
                 Err(e) => {
-                    if e.to_string().contains("UNIQUE constraint failed") {
-                        println!("❌ Project with name '{}' already exists", project.name);
-                    } else {
-                        return Err(e.into());
+                    // Use rusqlite's ErrorCode directly to detect unique constraint violations
+                    match &e {
+                        SqliteError::SqliteFailure(sqlite_error, _) 
+                            if sqlite_error.code == ErrorCode::ConstraintViolation => {
+                            println!("❌ Project with name '{}' already exists", project.name);
+                        }
+                        _ => {
+                            return Err(e.into());
+                        }
                     }
                 }
             }
