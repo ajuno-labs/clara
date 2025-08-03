@@ -122,6 +122,57 @@ fn handle_internal_command(command: &str, context: &mut ReplContext) -> std::res
 }
 
 fn handle_task_command(input: &str, context: &ReplContext) -> std::result::Result<bool, Box<dyn std::error::Error>> {
+    let trimmed_input = input.trim();
+    
+    // Special handling for 'add' command with slash metadata
+    if trimmed_input.starts_with("add ") && !trimmed_input.contains("--") {
+        // Extract everything after "add " as the task text
+        let task_text = &trimmed_input[4..]; // Skip "add "
+        if task_text.contains('/') {
+            // This looks like slash metadata, handle it directly
+            use crate::cli::args::Commands;
+            let cmd = Commands::Add { 
+                parent: None, 
+                text: Some(task_text.to_string()) 
+            };
+            execute_command(cmd, context)?;
+            return Ok(true);
+        }
+    }
+    
+    // Special handling for 'edit' command with slash metadata
+    if trimmed_input.starts_with("edit ") && !trimmed_input.contains("--") {
+        // For edit with slash metadata, we need to be more careful about parsing
+        // Expected formats:
+        // 1. edit 5 /p urgent           (metadata-only)
+        // 2. edit 5 "New title" /p urgent  (title + metadata, quoted)
+        // 3. edit 5 SingleWord /p urgent   (single word title + metadata)
+        
+        // Use shell_words to properly handle quoted arguments
+        match shell_words::split(trimmed_input) {
+            Ok(argv) if argv.len() >= 3 => {
+                if let Ok(id) = argv[1].parse::<u32>() {
+                    // Check if there's slash metadata anywhere in the remaining args
+                    let remaining_args = &argv[2..];
+                    if remaining_args.iter().any(|arg| arg.starts_with('/')) {
+                        // Found slash metadata, reconstruct the text part
+                        let text = remaining_args.join(" ");
+                        
+                        use crate::cli::args::Commands;
+                        let cmd = Commands::Edit {
+                            id,
+                            text: Some(text)
+                        };
+                        execute_command(cmd, context)?;
+                        return Ok(true);
+                    }
+                }
+            }
+            _ => {} // Fall through to normal parsing
+        }
+    }
+
+    // Fall back to normal shell parsing for other commands
     let argv = match shell_words::split(input) {
         Ok(v) if v.is_empty() => return Ok(true),
         Ok(v) => v,
@@ -262,43 +313,52 @@ fn print_repl_help(context: &ReplContext) {
             } else {
                 println!("Task commands (global mode):");
             }
-            println!("  add                  - Add a new task");
-            println!("  add --parent <id>    - Add a subtask under an existing task");
-            println!("  list                 - List all tasks in hierarchical tree structure");
-            println!("  edit <id>            - Edit a task");
-            println!("  remove <id>          - Remove a task");
-            println!("  done <id>            - Mark a task as done");
+            print_task_commands();
         }
         Context::Project => {
-            println!("Project commands:");
-            println!("  list                 - List all projects");
-            println!("  add                  - Add a new project");
-            println!("  edit <id>            - Edit a project");
-            println!("  remove <id>          - Remove a project");
+            print_project_commands();
         }
     }
     println!();
     println!("Use any command followed by --help for detailed usage.");
 }
 
-fn print_project_help() {
-    println!("Available project commands:");
+fn print_task_commands() {
+    println!("  add                      - Add a new task (opens editor)");
+    println!("  add title /p high /tag work - Add with slash-style metadata");
+    println!("  add --parent <id>           - Add a subtask under an existing task");
+    println!("  list                        - List all tasks in hierarchical tree structure");
+    println!("  edit <id>                   - Edit a task (opens editor)");
+    println!("  edit <id> /p high /tag work - Edit with slash-style metadata");
+    println!("  remove <id>                 - Remove a task");
+    println!("  done <id>                   - Mark a task as done");
+    println!();
+    println!("Slash metadata options:");
+    println!("  /p <priority>    - Set priority (low, medium, high, urgent)");
+    println!("  /due <date>      - Set due date (YYYY-MM-DD, MM/DD/YYYY, MM-DD)");
+    println!("  /tag <tags>      - Set tags (comma-separated)");
+    println!("  /parent <id>     - Set parent task");
+    println!("  /est <estimate>  - Set time estimate");
+}
+
+fn print_project_commands() {
+    println!("Project commands:");
     println!("  list                 - List all projects");
     println!("  add                  - Add a new project");
     println!("  edit <id>            - Edit a project");
     println!("  remove <id>          - Remove a project");
+}
+
+fn print_project_help() {
+    println!("Available project commands:");
+    print_project_commands();
     println!();
     println!("Use any command followed by --help for detailed usage.");
 }
 
 fn print_task_help() {
     println!("Available task commands:");
-    println!("  add                  - Add a new task");
-    println!("  add --parent <id>    - Add a subtask under an existing task");
-    println!("  list                 - List all tasks in hierarchical tree structure");
-    println!("  edit <id>            - Edit a task");
-    println!("  remove <id>          - Remove a task");
-    println!("  done <id>            - Mark a task as done");
+    print_task_commands();
     println!();
     println!("Use any command followed by --help for detailed usage.");
 }

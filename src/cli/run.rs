@@ -4,9 +4,9 @@ use crate::repl::command_handler::ReplContext;
 
 pub fn execute_command(cmd: Commands, context: &ReplContext) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        Commands::Add { parent } => add_task(parent, context),
+        Commands::Add { parent, text } => add_task(parent, text, context),
         Commands::List => list_tasks(context),
-        Commands::Edit { id } => edit_task(id),
+        Commands::Edit { id, text } => edit_task(id, text),
         Commands::Remove { id } => remove_task(id),
         Commands::Done { id } => done_task(id),
     }

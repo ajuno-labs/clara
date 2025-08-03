@@ -152,9 +152,28 @@ impl TaskStore {
     }
 
     pub fn update_task(&self, task: &Task) -> Result<()> {
+        let tags_json = serde_json::to_string(&task.tags)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
+        let extras_json = task.extras.as_ref()
+            .map(|e| serde_json::to_string(e))
+            .transpose()
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
+        
         self.conn.execute(
-            "UPDATE tasks SET title = ?1, status = ?2 WHERE id = ?3",
-            rusqlite::params![task.title, task.status, task.id],
+            "UPDATE tasks SET title = ?1, status = ?2, tags = ?3, priority = ?4, due_date = ?5, updated_at = ?6, completed_at = ?7, parent_id = ?8, project_id = ?9, extras = ?10 WHERE id = ?11",
+            rusqlite::params![
+                task.title,
+                task.status,
+                tags_json,
+                task.priority,
+                task.due_date,
+                task.updated_at,
+                task.completed_at,
+                task.parent_id,
+                task.project_id,
+                extras_json,
+                task.id
+            ],
         )?;
         Ok(())
     }
