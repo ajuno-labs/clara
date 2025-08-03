@@ -13,7 +13,7 @@ pub fn done_task(id: u32) -> Result<(), Box<dyn std::error::Error>> {
     };
     
     // Update task status to Done
-    store.update(id, crate::task::Status::Done)?;
+    store.update_status(id, crate::task::Status::Done)?;
     
     println!("✅ Task {} marked as done: '{}'", id, task.title);
     

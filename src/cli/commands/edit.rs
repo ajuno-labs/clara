@@ -68,7 +68,7 @@ fn edit_task_with_metadata(id: u32, text: &str) -> Result<(), Box<dyn std::error
     task.updated_at = Local::now().timestamp();
     
     // Update task in database
-    store.update_task(&task)?;
+    store.update(&task)?;
     
     println!("✅ Task {} updated: '{}'", id, task.title);
     
@@ -104,7 +104,7 @@ fn edit_task_with_editor(id: u32) -> Result<(), Box<dyn std::error::Error>> {
     updated_task.created_at = task.created_at;
     
     // Update task in database
-    store.update_task(&updated_task)?;
+    store.update(&updated_task)?;
     
     println!("✅ Task {} updated: '{}'", id, updated_task.title);
     
