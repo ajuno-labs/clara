@@ -12,7 +12,7 @@ impl TaskStore {
     pub fn new() -> Result<Self> {
         let db_path = Self::get_db_path();
         let conn = Connection::open(db_path)?;
-        
+
         let store = TaskStore { conn };
         store.init_tables()?;
         Ok(store)
@@ -52,7 +52,9 @@ impl TaskStore {
     }
 
     pub fn list(&self) -> Result<Vec<Task>> {
-        let mut stmt = self.conn.prepare("SELECT id, title, created_at, status FROM tasks")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, created_at, status FROM tasks")?;
         let task_iter = stmt.query_map([], |row| {
             Ok(Task {
                 id: row.get(0)?,
@@ -80,10 +82,8 @@ impl TaskStore {
     }
 
     pub fn delete(&self, id: u32) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM tasks WHERE id = ?1",
-            rusqlite::params![id],
-        )?;
+        self.conn
+            .execute("DELETE FROM tasks WHERE id = ?1", rusqlite::params![id])?;
         Ok(())
     }
 }
